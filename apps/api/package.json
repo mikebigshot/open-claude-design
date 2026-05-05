@@ -1,0 +1,34 @@
+{
+  "name": "@open-design/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "db:migrate:local": "wrangler d1 execute open-design --local --file=drizzle/migrations/0001_init.sql && wrangler d1 execute open-design --local --file=drizzle/migrations/0002_messages.sql && wrangler d1 execute open-design --local --file=drizzle/migrations/0003_comments.sql && wrangler d1 execute open-design --local --file=drizzle/migrations/0004_comments_file_path.sql && wrangler d1 execute open-design --local --file=drizzle/migrations/0005_messages_composite_pk.sql && wrangler d1 execute open-design --local --file=drizzle/migrations/0006_chats.sql",
+    "db:migrate:remote": "wrangler d1 execute open-design --remote --file=drizzle/migrations/0001_init.sql && wrangler d1 execute open-design --remote --file=drizzle/migrations/0002_messages.sql && wrangler d1 execute open-design --remote --file=drizzle/migrations/0003_comments.sql && wrangler d1 execute open-design --remote --file=drizzle/migrations/0004_comments_file_path.sql && wrangler d1 execute open-design --remote --file=drizzle/migrations/0005_messages_composite_pk.sql && wrangler d1 execute open-design --remote --file=drizzle/migrations/0006_chats.sql",
+    "build": "wrangler deploy --dry-run --outdir=dist",
+    "deploy": "wrangler deploy",
+    "lint": "eslint src --ext ts --max-warnings 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
+    "test:integration": "vitest run --config vitest.config.integration.ts --passWithNoTests",
+    "clean": "rm -rf dist .wrangler .turbo"
+  },
+  "dependencies": {
+    "@open-design/contracts": "*",
+    "hono": "^4.6.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.41",
+    "@cloudflare/workers-types": "^4.20241004.0",
+    "@typescript-eslint/eslint-plugin": "^8.8.1",
+    "@typescript-eslint/parser": "^8.8.1",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.12.0",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.2",
+    "wrangler": "^3.80.0"
+  }
+}

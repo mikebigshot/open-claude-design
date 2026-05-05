@@ -1,0 +1,75 @@
+name: Deploy
+
+# Manual trigger only by default — push-triggered deploy turned off so
+# fork maintainers don't surprise themselves on first push to main.
+# Enable it by uncommenting `push` once secrets are wired.
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'apps/**'
+  #     - 'packages/**'
+  #     - '.github/workflows/deploy.yml'
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false # let the in-flight deploy finish; queue the new one
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # secrets 不能直接出现在 step `if:` 里，先经 job env 中转。
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # ── Worker (apps/api) ─────────────────────────────────────
+      - name: Apply D1 migrations (idempotent)
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npm run db:migrate:remote --workspace=@open-design/api
+
+      - name: Deploy worker
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        working-directory: apps/api
+        run: npx wrangler deploy
+
+      # ── Web (apps/web → Cloudflare Pages) ─────────────────────
+      - name: Vendor iframe runtime UMD bundles (React + ReactDOM + @babel/standalone)
+        # Downloads ~4.3MB to apps/web/public/vendor/. The Pages site then serves
+        # them at https://<your-domain>/vendor/... so previews render against
+        # same-origin assets instead of unpkg.com — required for offline /
+        # strict-CSP environments.
+        run: npm run vendor --workspace=@open-design/web
+
+      - name: Build web
+        run: npm run build --workspace=@open-design/web
+        env:
+          # If your worker lives on a different origin, set this to its full URL,
+          # e.g. https://open-design-api.example.workers.dev
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || '' }}
+          # Toggle vendored iframe runtime (paired with the vendor step above).
+          # Keep true for production deploys.
+          VITE_VENDOR_RUNTIME: 'true'
+
+      - name: Deploy Pages
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: npx wrangler pages deploy apps/web/dist --project-name=open-design-web --branch=main
+
+      - name: Skip notice (no CF token)
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        run: |
+          echo "::notice::CLOUDFLARE_API_TOKEN secret is not set; deploy steps skipped."
+          echo "::notice::Add CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID to repo secrets to enable deploy."

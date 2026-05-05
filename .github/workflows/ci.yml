@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  # 单人项目，feature branch → PR → 合并到 main 是唯一流程；PR 已跑过 CI，
+  # 合并后 main 不需要再跑一次。直接 push 到 main（绕 PR）的情况认为是非常
+  # 规操作，不在 CI 兜底范围内。
+  pull_request:
+    branches: [main]
+  # 手动重跑 — debug 时不用空 commit 也能 retrigger。
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────
+  # 静态检查 + 单元 / 集成测试 + build。约 2-3 分钟。
+  # ───────────────────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (unit + coverage gate)
+        run: npm run test:coverage
+
+      - name: Test (integration)
+        run: npm run test:integration
+
+      - name: Build
+        run: npm run build
+
+  # ───────────────────────────────────────────────────────────────────
+  # E2E (Playwright + chromium)。跟 build 并行跑。约 5-7 分钟（含 deps）。
+  #
+  # LLM 调用通过 e2e/fixtures/openrouter-mock.ts 在 page level 拦截，
+  # 不打真实 OpenRouter — 不依赖 secrets，fork 友好。
+  # ───────────────────────────────────────────────────────────────────
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # 必须 apply 一遍 D1 schema —— 本地 setup 脚本会跑这步，CI 没有。
+      # 不跑会让 wrangler dev 起来但每个请求 "no such table: projects"，
+      # playwright webServer 健康检查超时 120s 然后整 job 挂。
+      - name: Apply D1 schema (local)
+        run: npm run db:migrate:local --workspace=@open-design/api
+
+      # Playwright browser 体积 ~150MB，缓存能把后续 run 这步从 ~40s 降到 ~3s。
+      # key 跟 lockfile 绑 — playwright 版本变 = lockfile 变 = key 失效。
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browser (chromium + system deps)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      # Cache 命中时只补系统库（chromium 二进制已在缓存里），ubuntu runner 升级时也能补上。
+      - name: Install Playwright system deps only (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run e2e
+        run: npm run test:e2e
+
+      # 失败时上传 report + traces，方便本地 npx playwright show-report 看。
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: e2e/test-results/
+          retention-days: 14

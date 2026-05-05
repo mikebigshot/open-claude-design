@@ -1,0 +1,14 @@
+node_modules
+dist
+.turbo
+.wrangler
+.next
+coverage
+pnpm-lock.yaml
+*.min.js
+
+# Docs are hand-written; let humans control their formatting
+docs/
+
+# Workspace YAML — pnpm has its own opinions
+pnpm-workspace.yaml

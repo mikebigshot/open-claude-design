@@ -1,0 +1,55 @@
+/* Open Design tokens — mirror of src/index.ts.
+ * Consumed by the iframe runtime and any artifact that wants to reference
+ * the host design system via CSS variables. Keep in sync with index.ts.
+ */
+
+:root {
+  /* Backgrounds */
+  --bg-50: #fcfbf8;
+  --bg-100: #faf9f5;
+  --bg-200: #f3f1ea;
+  --bg-300: #e9e6dc;
+  --bg-400: #dcd9cc;
+  --bg-500: #c9c5b5;
+
+  /* Foreground */
+  --fg-100: #141413;
+  --fg-200: #2c2a26;
+  --fg-300: #5a574f;
+  --fg-400: #8a8678;
+  --fg-500: #b8b5ac;
+
+  /* Brand */
+  --brand-base: #c96442;
+  --brand-hover: #b5553a;
+  --brand-press: #9e4a32;
+  --brand-soft: #f3e7df;
+  --brand-tint: #fbf1eb;
+
+  /* Semantic */
+  --success: #5c8a53;
+  --info: #4a6fa5;
+  --danger: #c24545;
+  --warn: #d49a3f;
+
+  /* Lines */
+  --line-100: #ece9df;
+  --line-200: #ddd8c8;
+  --line-300: #c8c2ae;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.04), 0 1px 1px rgba(20, 20, 19, 0.03);
+  --shadow-md: 0 4px 12px rgba(20, 20, 19, 0.06), 0 2px 4px rgba(20, 20, 19, 0.04);
+  --shadow-lg: 0 16px 36px rgba(20, 20, 19, 0.1), 0 4px 12px rgba(20, 20, 19, 0.06);
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+
+  /* Fonts */
+  --font-serif: 'Instrument Serif', 'Source Serif 4', Georgia, serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

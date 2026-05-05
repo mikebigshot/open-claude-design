@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Analytics dashboard — Open Design example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background: #f8f9fb;
+        color: #111827;
+      }
+      .serif {
+        font-family: 'Instrument Serif', serif;
+      }
+      .accent {
+        color: #c96442;
+      }
+      .bg-accent {
+        background-color: #c96442;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <div class="max-w-7xl mx-auto p-6">
+      <!-- Header -->
+      <div class="flex items-baseline gap-4 mb-8">
+        <h1 class="serif text-4xl">Overview</h1>
+        <div class="text-sm text-gray-500">Last 7 days</div>
+        <div class="ml-auto flex gap-2">
+          <button class="text-xs px-3 py-1.5 border border-gray-200 bg-white rounded-md hover:bg-gray-50">
+            Export ↓
+          </button>
+          <button class="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-gray-800">
+            Add widget +
+          </button>
+        </div>
+      </div>
+
+      <!-- Stat row -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <!-- Revenue -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">Revenue</div>
+          <div class="text-3xl font-semibold mb-1">$48,210</div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-green-600 font-medium">+12.4%</span>
+            <span class="text-gray-400">vs last week</span>
+            <svg class="ml-auto" width="60" height="20" viewBox="0 0 60 20">
+              <polyline
+                points="0,15 10,12 20,14 30,8 40,10 50,5 60,3"
+                fill="none"
+                stroke="#16a34a"
+                stroke-width="1.5"
+              />
+            </svg>
+          </div>
+        </div>
+        <!-- Active users -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">Active users</div>
+          <div class="text-3xl font-semibold mb-1">8,492</div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-green-600 font-medium">+3.1%</span>
+            <span class="text-gray-400">vs last week</span>
+            <svg class="ml-auto" width="60" height="20" viewBox="0 0 60 20">
+              <polyline
+                points="0,12 10,10 20,11 30,8 40,9 50,7 60,6"
+                fill="none"
+                stroke="#16a34a"
+                stroke-width="1.5"
+              />
+            </svg>
+          </div>
+        </div>
+        <!-- Conversion -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">Conversion rate</div>
+          <div class="text-3xl font-semibold mb-1">3.42%</div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-red-600 font-medium">−0.6%</span>
+            <span class="text-gray-400">vs last week</span>
+            <svg class="ml-auto" width="60" height="20" viewBox="0 0 60 20">
+              <polyline
+                points="0,5 10,7 20,6 30,9 40,8 50,11 60,13"
+                fill="none"
+                stroke="#dc2626"
+                stroke-width="1.5"
+              />
+            </svg>
+          </div>
+        </div>
+        <!-- Avg session -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">Avg session</div>
+          <div class="text-3xl font-semibold mb-1">4m 12s</div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-green-600 font-medium">+8s</span>
+            <span class="text-gray-400">vs last week</span>
+            <svg class="ml-auto" width="60" height="20" viewBox="0 0 60 20">
+              <polyline
+                points="0,14 10,13 20,11 30,12 40,9 50,8 60,7"
+                fill="none"
+                stroke="#16a34a"
+                stroke-width="1.5"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Body row -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Chart -->
+        <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+          <div class="flex items-center justify-between mb-5">
+            <div>
+              <h2 class="serif text-2xl">Traffic over time</h2>
+              <p class="text-xs text-gray-500">Daily visits, last 7 days</p>
+            </div>
+            <div class="flex gap-1 text-xs bg-gray-50 rounded-md p-0.5">
+              <button class="px-2.5 py-1 rounded bg-white shadow-sm font-medium">7d</button>
+              <button class="px-2.5 py-1 rounded text-gray-500">30d</button>
+              <button class="px-2.5 py-1 rounded text-gray-500">90d</button>
+            </div>
+          </div>
+          <svg viewBox="0 0 600 200" class="w-full h-48">
+            <!-- grid lines -->
+            <line x1="40" y1="40" x2="600" y2="40" stroke="#f3f4f6" />
+            <line x1="40" y1="80" x2="600" y2="80" stroke="#f3f4f6" />
+            <line x1="40" y1="120" x2="600" y2="120" stroke="#f3f4f6" />
+            <line x1="40" y1="160" x2="600" y2="160" stroke="#f3f4f6" />
+            <!-- y axis labels -->
+            <text x="34" y="44" text-anchor="end" font-size="10" fill="#9ca3af">2k</text>
+            <text x="34" y="84" text-anchor="end" font-size="10" fill="#9ca3af">1.5k</text>
+            <text x="34" y="124" text-anchor="end" font-size="10" fill="#9ca3af">1k</text>
+            <text x="34" y="164" text-anchor="end" font-size="10" fill="#9ca3af">500</text>
+            <!-- area fill -->
+            <path
+              d="M 60,140 L 140,110 L 220,128 L 300,80 L 380,95 L 460,55 L 540,70 L 540,180 L 60,180 Z"
+              fill="#c96442"
+              fill-opacity="0.08"
+            />
+            <!-- line -->
+            <polyline
+              points="60,140 140,110 220,128 300,80 380,95 460,55 540,70"
+              fill="none"
+              stroke="#c96442"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <!-- dots -->
+            <g fill="#c96442">
+              <circle cx="60" cy="140" r="3" />
+              <circle cx="140" cy="110" r="3" />
+              <circle cx="220" cy="128" r="3" />
+              <circle cx="300" cy="80" r="3" />
+              <circle cx="380" cy="95" r="3" />
+              <circle cx="460" cy="55" r="3" />
+              <circle cx="540" cy="70" r="3" />
+            </g>
+            <!-- x axis labels -->
+            <g font-size="10" fill="#9ca3af" text-anchor="middle">
+              <text x="60" y="195">Mon</text>
+              <text x="140" y="195">Tue</text>
+              <text x="220" y="195">Wed</text>
+              <text x="300" y="195">Thu</text>
+              <text x="380" y="195">Fri</text>
+              <text x="460" y="195">Sat</text>
+              <text x="540" y="195">Sun</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Activity -->
+        <div class="bg-white border border-gray-200 rounded-xl p-5">
+          <h2 class="serif text-2xl mb-1">Recent activity</h2>
+          <p class="text-xs text-gray-500 mb-5">Last 5 events</p>
+          <ul class="space-y-3.5">
+            <li class="flex gap-3 text-sm">
+              <div class="w-2 h-2 rounded-full bg-green-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <div class="text-gray-900">New signup — alex@stripe.com</div>
+                <div class="text-xs text-gray-400">2m ago</div>
+              </div>
+            </li>
+            <li class="flex gap-3 text-sm">
+              <div class="w-2 h-2 rounded-full bg-green-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <div class="text-gray-900">Subscription upgraded — Pro</div>
+                <div class="text-xs text-gray-400">14m ago</div>
+              </div>
+            </li>
+            <li class="flex gap-3 text-sm">
+              <div class="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <div class="text-gray-900">Payment retried — invoice #4291</div>
+                <div class="text-xs text-gray-400">42m ago</div>
+              </div>
+            </li>
+            <li class="flex gap-3 text-sm">
+              <div class="w-2 h-2 rounded-full bg-gray-300 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <div class="text-gray-900">User invited team — Team "Atelier"</div>
+                <div class="text-xs text-gray-400">1h ago</div>
+              </div>
+            </li>
+            <li class="flex gap-3 text-sm">
+              <div class="w-2 h-2 rounded-full bg-gray-300 mt-1.5 flex-shrink-0"></div>
+              <div>
+                <div class="text-gray-900">API key rotated — production</div>
+                <div class="text-xs text-gray-400">3h ago</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

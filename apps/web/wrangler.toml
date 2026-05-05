@@ -1,0 +1,18 @@
+# Cloudflare Pages config — `wrangler pages deploy apps/web/dist`.
+#
+# Pages projects don't have a real `wrangler.toml` in the same sense as
+# Workers — this file is mostly a deployment-time hint for the Wrangler
+# CLI. It lets `wrangler pages deploy` pick up the project name without
+# CLI flags. If you fork this repo and self-host, change `name` to
+# anything not already in use on your CF account.
+
+name = "open-design-web"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+# If your worker (apps/api) lives on a different subdomain (e.g.
+# api.example.com), no env wiring is needed here — the SPA hits
+# `/api/*` and you set up a custom-domain route on the worker side.
+#
+# If you want the SPA + API on the *same* origin, configure a Pages
+# Function or rewrite `/api/*` → worker via Cloudflare's Routes UI.

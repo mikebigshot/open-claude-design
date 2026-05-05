@@ -1,0 +1,6 @@
+# Vendored iframe runtime UMD bundles — populated by `npm run vendor`.
+# Not committed (~4.3MB of binary assets); deploy workflow runs the vendor
+# script before `vite build`. Local dev defaults to unpkg CDN unless
+# VITE_VENDOR_RUNTIME=true is set in .env.local.
+public/vendor/
+!public/vendor/.gitkeep

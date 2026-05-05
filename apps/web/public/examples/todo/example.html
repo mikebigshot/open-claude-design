@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Todo list — Open Design example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #faf9f5;
+      }
+      .strike {
+        text-decoration: line-through;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen py-12 px-4">
+    <div class="max-w-md mx-auto">
+      <h1 class="text-2xl font-semibold text-gray-900 mb-1">Today</h1>
+      <p class="text-sm text-gray-500 mb-6">A few things to get done.</p>
+
+      <form id="addForm" class="flex gap-2 mb-6">
+        <input
+          id="newInput"
+          type="text"
+          placeholder="What needs doing?"
+          class="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:border-gray-400"
+        />
+        <button
+          type="submit"
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800"
+        >
+          Add
+        </button>
+      </form>
+
+      <ul id="list" class="space-y-1.5"></ul>
+
+      <div id="empty" class="text-center text-sm text-gray-400 py-8 hidden">
+        Nothing here. Add a todo to get started.
+      </div>
+    </div>
+
+    <script>
+      const todos = [
+        { id: 1, text: 'Try the iframe preview', done: true },
+        { id: 2, text: 'Edit a generated component with the Edit tool', done: false },
+        { id: 3, text: 'Drop a comment pin on the layout', done: false },
+      ];
+      let nextId = 4;
+
+      const list = document.getElementById('list');
+      const empty = document.getElementById('empty');
+
+      function render() {
+        if (todos.length === 0) {
+          list.innerHTML = '';
+          empty.classList.remove('hidden');
+          return;
+        }
+        empty.classList.add('hidden');
+        list.innerHTML = todos
+          .map(
+            (t) => `
+              <li class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 bg-white">
+                <button
+                  data-toggle="${t.id}"
+                  class="w-5 h-5 rounded border ${t.done ? 'bg-gray-900 border-gray-900' : 'border-gray-300'} flex items-center justify-center flex-shrink-0"
+                  aria-label="${t.done ? 'Mark incomplete' : 'Mark complete'}"
+                >
+                  ${t.done ? '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+                </button>
+                <span class="flex-1 text-sm ${t.done ? 'strike text-gray-400' : 'text-gray-900'}">${t.text}</span>
+                <button data-del="${t.id}" class="text-gray-300 hover:text-gray-900 text-xs px-1" aria-label="Delete">×</button>
+              </li>
+            `,
+          )
+          .join('');
+      }
+
+      document.getElementById('addForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('newInput');
+        const text = input.value.trim();
+        if (!text) return;
+        todos.push({ id: nextId++, text, done: false });
+        input.value = '';
+        render();
+      });
+
+      list.addEventListener('click', (e) => {
+        const toggle = e.target.closest('[data-toggle]');
+        if (toggle) {
+          const id = Number(toggle.dataset.toggle);
+          const t = todos.find((x) => x.id === id);
+          if (t) {
+            t.done = !t.done;
+            render();
+          }
+          return;
+        }
+        const del = e.target.closest('[data-del]');
+        if (del) {
+          const id = Number(del.dataset.del);
+          const i = todos.findIndex((x) => x.id === id);
+          if (i >= 0) {
+            todos.splice(i, 1);
+            render();
+          }
+        }
+      });
+
+      render();
+    </script>
+  </body>
+</html>

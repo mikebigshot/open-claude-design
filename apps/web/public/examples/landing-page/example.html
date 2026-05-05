@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Atelier — Open Design example landing</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background: #faf9f5;
+        color: #141413;
+      }
+      .serif {
+        font-family: 'Instrument Serif', serif;
+      }
+      .brand {
+        color: #c96442;
+      }
+      .bg-brand {
+        background-color: #c96442;
+      }
+      .border-brand {
+        border-color: #c96442;
+      }
+      .hover-brand:hover {
+        background-color: #b9583a;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Nav -->
+    <header class="border-b border-gray-200">
+      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center">
+        <div class="flex items-center gap-2 font-semibold">
+          <div class="w-6 h-6 rounded-md bg-brand"></div>
+          <span class="serif text-xl">Atelier</span>
+        </div>
+        <nav class="ml-12 flex gap-8 text-sm text-gray-600">
+          <a href="#features" class="hover:text-gray-900">Features</a>
+          <a href="#pricing" class="hover:text-gray-900">Pricing</a>
+          <a href="#docs" class="hover:text-gray-900">Docs</a>
+        </nav>
+        <div class="ml-auto flex items-center gap-3">
+          <a href="#login" class="text-sm text-gray-700 hover:text-gray-900">Sign in</a>
+          <a
+            href="#start"
+            class="text-sm bg-brand text-white px-3.5 py-2 rounded-lg hover-brand"
+            >Get started</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="max-w-4xl mx-auto px-6 pt-24 pb-20 text-center">
+      <div class="inline-block text-xs uppercase tracking-wider text-brand mb-5 font-medium">
+        Research preview
+      </div>
+      <h1 class="serif text-6xl md:text-7xl leading-tight mb-6">
+        Design with intent,
+        <br />
+        not with pixels.
+      </h1>
+      <p class="text-lg text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
+        Atelier turns conversation into production-grade interfaces. Describe what you want, get a
+        working prototype you can edit, comment on, and ship.
+      </p>
+      <div class="flex justify-center gap-3">
+        <a
+          href="#start"
+          class="bg-brand text-white text-sm font-medium px-5 py-3 rounded-lg hover-brand"
+          >Start designing →</a
+        >
+        <a
+          href="#examples"
+          class="border border-gray-300 text-sm font-medium px-5 py-3 rounded-lg hover:bg-gray-50"
+          >See examples</a
+        >
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-3 gap-8">
+      <div>
+        <div class="w-10 h-10 rounded-lg bg-brand/10 brand flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M2 12h4m12 0h4M5 5l3 3m8 8l3 3M5 19l3-3m8-8l3-3"/></svg>
+        </div>
+        <h3 class="serif text-2xl mb-2">Generate by chatting</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">
+          Describe a screen, a flow, a whole product. Atelier turns intent into a working
+          high-fidelity interface in seconds.
+        </p>
+      </div>
+      <div>
+        <div class="w-10 h-10 rounded-lg bg-brand/10 brand flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>
+        </div>
+        <h3 class="serif text-2xl mb-2">Edit at the speed of thought</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">
+          Click any element to tweak its color, copy, spacing, type. Edits round-trip back to your
+          source code as Tailwind classes or inline styles.
+        </p>
+      </div>
+      <div>
+        <div class="w-10 h-10 rounded-lg bg-brand/10 brand flex items-center justify-center mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10z"/></svg>
+        </div>
+        <h3 class="serif text-2xl mb-2">Comment, draw, iterate</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">
+          Drop pins on the preview, sketch annotations on top, or send a screenshot back to chat
+          for the next round of changes.
+        </p>
+      </div>
+    </section>
+
+    <!-- Social proof -->
+    <section class="border-y border-gray-200 py-12">
+      <p class="text-xs uppercase tracking-wider text-gray-500 text-center mb-6">
+        Trusted by teams shipping to thousands of users
+      </p>
+      <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-x-12 gap-y-4 px-6 opacity-60">
+        <span class="serif text-2xl">Linear</span>
+        <span class="serif text-2xl italic">Mercury</span>
+        <span class="serif text-2xl font-bold">Notion</span>
+        <span class="serif text-2xl">Vercel</span>
+        <span class="serif text-2xl italic">Stripe</span>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section id="start" class="max-w-3xl mx-auto px-6 py-24 text-center">
+      <h2 class="serif text-5xl mb-4">Start your first prototype.</h2>
+      <p class="text-gray-600 mb-8">Free during research preview. No credit card.</p>
+      <form class="flex max-w-md mx-auto gap-2" onsubmit="event.preventDefault(); this.querySelector('button').textContent='Joined ✓';">
+        <input
+          type="email"
+          required
+          placeholder="you@company.com"
+          class="flex-1 px-4 py-3 rounded-lg border border-gray-300 bg-white text-sm focus:outline-none focus:border-gray-500"
+        />
+        <button
+          type="submit"
+          class="bg-brand text-white px-5 py-3 rounded-lg text-sm font-medium hover-brand"
+        >
+          Get access
+        </button>
+      </form>
+    </section>
+
+    <footer class="border-t border-gray-200 py-8 text-center text-xs text-gray-500">
+      © 2026 Atelier — built with Open Design
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+name = "open-design-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 binding (project metadata)
+[[d1_databases]]
+binding = "DB"
+database_name = "open-design"
+database_id = "TODO_FILL_AFTER_CREATE"
+migrations_dir = "drizzle/migrations"
+
+# R2 binding (sha256-addressed blobs)
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "open-design-blobs"
+
+[vars]
+# Comma-separated allowlist for CORS Origin header. Override per-environment via
+# `wrangler deploy --var ALLOWED_ORIGINS:"..."` or `wrangler secret put` (secrets
+# win over [vars]). Local dev defaults to vite dev server port 5173.
+ALLOWED_ORIGINS = "http://localhost:5173"
+
+[observability]
+enabled = true

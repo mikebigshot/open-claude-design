@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Counter — Open Design example</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #faf9f5;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 w-80">
+      <div class="text-xs uppercase tracking-wider text-gray-500 mb-2">Counter</div>
+      <div id="value" class="text-6xl font-semibold text-gray-900 mb-6">0</div>
+      <div class="flex gap-2 mb-3">
+        <button
+          id="dec"
+          class="flex-1 py-2.5 px-4 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition text-sm font-medium"
+        >
+          − Decrement
+        </button>
+        <button
+          id="inc"
+          class="flex-1 py-2.5 px-4 rounded-lg bg-gray-900 text-white hover:bg-gray-800 active:bg-black transition text-sm font-medium"
+        >
+          Increment +
+        </button>
+      </div>
+      <button
+        id="reset"
+        class="w-full py-2 px-4 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition text-xs"
+      >
+        Reset
+      </button>
+    </div>
+    <script>
+      let count = 0;
+      const el = document.getElementById('value');
+      const render = () => {
+        el.textContent = String(count);
+      };
+      document.getElementById('inc').onclick = () => {
+        count += 1;
+        render();
+      };
+      document.getElementById('dec').onclick = () => {
+        count -= 1;
+        render();
+      };
+      document.getElementById('reset').onclick = () => {
+        count = 0;
+        render();
+      };
+    </script>
+  </body>
+</html>

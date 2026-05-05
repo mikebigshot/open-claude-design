@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(browse)",
+      "Skill(browse:*)",
+      "WebFetch(domain:www.zdoc.app)",
+      "WebFetch(domain:openai.github.io)",
+      "WebFetch(domain:mastra.ai)",
+      "WebFetch(domain:langchain-ai.github.io)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "mcp__claude-code__Bash",
+      "mcp__claude-code__Read",
+      "mcp__claude-code__Glob",
+      "mcp__claude-code__Task",
+      "mcp__claude-code__Grep",
+      "Grep",
+      "Glob",
+      "Read",
+      "Bash(ls:*)",
+      "Bash(ls -la:*)",
+      "Bash(ls -R:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(wc:*)",
+      "Bash(du:*)",
+      "Bash(tree:*)",
+      "Bash(file:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(cat:*)",
+      "Bash(git log:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git clone:*)",
+      "Bash(mkdir:*)"
+    ]
+  }
+}
