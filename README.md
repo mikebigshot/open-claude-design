@@ -18,7 +18,7 @@
   <a href="#self-host-on-cloudflare"><img alt="Self-host" src="https://img.shields.io/badge/self--host-1%20command-blueviolet?style=flat-square" /></a>
 </p>
 
-<p align="center"><b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es-ES.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><b>English</b> · <a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">By <a href="https://www.imsai.cc/">imsai</a></p>
 
@@ -40,7 +40,7 @@ Anthropic's [Claude Design](https://claude.ai/design) turned an LLM into a tool 
 
 ### What Claude Design looks like
 
-Same shape as Claude Code: the browser hosts the agent, the cloud is just an LLM gateway + tool backend. A single turn's Chat request body is a direct Anthropic Messages API passthrough (full system + tools + all messages, assembled client-side). The cloud `OmeletteService` **does not maintain conversation state** — it just relays to the LLM, executes tools, and stores project snapshots.
+The browser hosts the agent; the cloud is just an LLM gateway + tool backend. A single turn's Chat request body is a direct Anthropic Messages API passthrough (full system + tools + all messages, assembled client-side). The cloud `OmeletteService` **does not maintain conversation state** — it just relays to the LLM, executes tools, and stores project snapshots.
 
 ```text
 Browser SPA (Vite + React Router v6 + styled-components)
@@ -127,7 +127,7 @@ All three projects are open-source recreations of Claude Design. The split is mo
 |  | Claude Design (original) | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
 |---|---|---|---|---|
 | Form factor | Web (claude.ai) | Desktop (Electron) | Web app + local daemon | **Pure web + Cloudflare Workers** |
-| Where the agent loop runs | Browser tab | Inside the Electron main process, bundling [pi-ai] | The CLI you already have on disk (Claude Code / Codex / Cursor / Gemini / … 13 adapters) | **Browser tab (Vercel AI SDK ToolLoopAgent, BYOK)** |
+| Where the agent loop runs | Browser tab | Inside the Electron main process, bundling [pi-ai] | The CLI you already have on disk (Codex / Cursor / Gemini / … 13 adapters) | **Browser tab (Vercel AI SDK ToolLoopAgent, BYOK)** |
 | Where chat / files live | Cloud (OmeletteService + content-addressed blobs) | Local SQLite + local filesystem | Local SQLite + local filesystem | **Cloudflare D1 + R2 (your account)** |
 | Need a local CLI / desktop shell? | No | Yes (Electron installer) | Yes (npm + one of 13 CLIs) | **No — open the page in a browser** |
 | Structural fidelity to the original | 100% | Medium (agent on a desktop runtime, not the web) | Medium (agent in the user's CLI, spawned by the daemon) | **High — agent in the browser + backend as storage, same shape as the original** |

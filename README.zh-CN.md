@@ -18,7 +18,7 @@
   <a href="#cloudflare-自部署"><img alt="自部署" src="https://img.shields.io/badge/自部署-复制粘贴一段-blueviolet?style=flat-square" /></a>
 </p>
 
-<p align="center"><a href="README.md">English</a> · <b>简体中文</b> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es-ES.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><a href="README.md">English</a> · <b>简体中文</b></p>
 
 <p align="center">作者：<a href="https://www.imsai.cc/">imsai</a></p>
 
@@ -40,7 +40,7 @@ Anthropic 的 [Claude Design](https://claude.ai/design) 把 LLM 变成了一个�
 
 ### 原版 Claude Design 长什么样
 
-跟 Claude Code 同一类：浏览器是 agent 的宿主，云端只是 LLM 网关 + 工具后端。一个 turn 的 Chat 请求体直接是 Anthropic Messages API 透传（含完整 system + tools + 全部 messages，由浏览器侧组装），云端 `OmeletteService` **不维护对话状态**，只做 LLM 透传 + 工具执行 + 项目快照存储。
+浏览器是 agent 的宿主，云端只是 LLM 网关 + 工具后端。一个 turn 的 Chat 请求体直接是 Anthropic Messages API 透传（含完整 system + tools + 全部 messages，由浏览器侧组装），云端 `OmeletteService` **不维护对话状态**，只做 LLM 透传 + 工具执行 + 项目快照存储。
 
 ```text
 浏览器 SPA（Vite + React Router v6 + styled-components）
@@ -127,7 +127,7 @@ LLM provider（用户 BYOK，浏览器直连，worker 看不见）
 |  | Claude Design（原版） | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
 |---|---|---|---|---|
 | 形态 | Web (claude.ai) | Desktop (Electron) | Web app + 本地 daemon | **纯 Web + Cloudflare Workers** |
-| Agent loop 跑在哪 | 浏览器 tab | Electron 主进程内捆绑 [pi-ai] | 用户已装的 CLI（Claude Code / Codex / Cursor / Gemini / … 13 个适配器） | **浏览器 tab（Vercel AI SDK ToolLoopAgent，BYOK）** |
+| Agent loop 跑在哪 | 浏览器 tab | Electron 主进程内捆绑 [pi-ai] | 用户已装的 CLI（Codex / Cursor / Gemini / … 13 个适配器） | **浏览器 tab（Vercel AI SDK ToolLoopAgent，BYOK）** |
 | Chat / 文件落在哪 | 云端（OmeletteService + 内容寻址 blob） | 本地 SQLite + 本地文件系统 | 本地 SQLite + 本地文件系统 | **Cloudflare D1 + R2（你自己的账号）** |
 | 是否需要本地装 CLI / 桌面壳 | 不需要 | 需要（Electron 安装包） | 需要（npm + 13 个 CLI 之一） | **不需要 —— 浏览器开网页就能用** |
 | 跟原版的同构度 | 100% | 中（agent 在桌面 runtime 而非 web） | 中（agent 在用户 CLI，靠 daemon spawn） | **高 —— 浏览器跑 agent + 后端只做存储，跟原版同位** |
