@@ -32,11 +32,112 @@ Anthropic 的 [Claude Design](https://claude.ai/design) 把 LLM 变成了一个�
 
 **Open Claude Design 是这套表面的一份开源忠实复刻，技术骨架对齐官方实现。** 在每个有取舍的地方，我们都优先参考 Anthropic 实际发出来的东西 —— artifact 格式、`EDITMODE` Tweaks 块、`<uuid>::verifier` 子 agent 命名约定、iframe 内的 Babel Standalone 渲染、四个工具的 `postMessage` 语法（`SET_MODE` / `EDIT_STYLE` / `ELEMENT_SELECTED` / `OVERLAY_READY` / `IFRAME_ERROR` / …）。这份代码最大的单一输入源，就是去读懂 Anthropic 已经上线的运行时。
 
-我们和 Claude Design 在一个方向上分流：**纯 Web，无外壳，不做 SaaS。** 整个产品跑在浏览器 tab + 一个 Cloudflare Worker。Chat agent（[Vercel AI SDK](https://github.com/vercel/ai) 的 tool-loop）**在你的浏览器 tab 里**执行，直接拿你的 key 调 OpenRouter —— Worker 只做存储，永远看不到你的 prompt。这个取舍换来三件事：
+**跟 Claude Design 一样，agent loop 留在浏览器 tab 里，chat / 文件 / 项目状态同步到自己的后端。** 这是我们与原版最关键的同构点 —— Anthropic 在云端只做 LLM 透传 + 工具执行 + 项目快照存储，agent 循环本体跑在浏览器 SPA 里；我们用 [Vercel AI SDK](https://github.com/vercel/ai) 的 tool loop 同样跑在浏览器 tab，chat / 文件 / 项目状态走 Cloudflare Worker 落到 D1 + R2，Worker 永远看不到你的 prompt。这套 **web agent + 后端存储**的形态，也是最适合演进成 SaaS 的。
 
-1. **免费 Cloudflare 账号一段命令自部署** —— 没有 Postgres、Redis、ECS、Docker。
-2. **没有账号、没有共享 SaaS、没有配额** —— fork、deploy、把链接发给朋友。
-3. **一份能读完的代码** —— 严格 TS、npm workspaces、约 10 个源码文件夹。最有意思的部分（iframe runtime、`EDITMODE` 协议、浏览器侧 agent 循环）一个周末读得完。
+## 技术架构
+
+> 这一节是这套代码的隐性 spec。结论来自我们 2026-04 期间对 `claude.ai/design` 的真实登录态调研 —— DOM / 网络抓包 / 全局变量 / 真实下载产物 / 反混淆 runtime / 实测 POC，尽量只列直接观察到的事实。
+
+### 原版 Claude Design 长什么样
+
+跟 Claude Code 同一类：浏览器是 agent 的宿主，云端只是 LLM 网关 + 工具后端。一个 turn 的 Chat 请求体直接是 Anthropic Messages API 透传（含完整 system + tools + 全部 messages，由浏览器侧组装），云端 `OmeletteService` **不维护对话状态**，只做 LLM 透传 + 工具执行 + 项目快照存储。
+
+```text
+浏览器 SPA（Vite + React Router v6 + styled-components）
+├── 主 agent loop                          ← agent 真正的宿主
+│     while (not done):
+│       POST OmeletteService.Chat (Anthropic Messages API 透传)
+│       parse tool_use → 9 类执行端
+├── Verifier 子 agent（UUID::verifier）     ← FORK BOUNDARY 角色注入
+├── 预览 iframe（*.claudeusercontent.com） ← srcdoc + runtime 注入 + postMessage RPC
+└── 本地文件夹桥（File System Access API） ← 4 个 local_* 工具走浏览器原生 API
+                ↓ Connect / gRPC-Web + Protobuf
+OmeletteService（thin LLM proxy + 工具后端）
+   Chat              → api.anthropic.com 透传
+   EditFile / GetFile / ListFiles / RecordAsset → 项目沙箱 CRUD
+   UpdateProjectData → 客户端权威状态整快照
+   McpListTools      → 第三方 MCP server 工具发现
+   MintPreviewToken  → preview 短期签名
+```
+
+#### 关键观察
+
+| 维度 | 实际实现 |
+|---|---|
+| 主 app 前端栈 | Vite + React Router v6 + styled-components；代码编辑器是原生 `<textarea>` + 手写 `<div>` 行号，无 Monaco / CodeMirror |
+| 后端协议 | Connect / gRPC-Web + Protobuf；Service 名 `anthropic.omelette.api.v1alpha.OmeletteService` |
+| Agent 工具协议 | MCP（Model Context Protocol）—— 抓到完整 `tools/list` 数据 + `defer_loading` 字段，第三方 MCP server 真实可接入 |
+| 工具路由 | 30+ 工具按 9 类分发：云端 RPC（EditFile / GetFile / …）/ 本地 FSA（local_*）/ iframe DOM（show_html / eval_js / screenshot）/ 客户端纯逻辑（snip / update_todos）/ 派生 sub-agent / 第三方 MCP / LLM 内置（web_search / web_fetch） |
+| Verifier 子 agent | 跟主 agent **共享 system prompt + 共享工具集 + 共享 history**，仅靠在 fork tool_result 里塞角色重置 prompt + sessionUUID 追加 `::verifier` 后缀 + max_tokens 砍半实现 |
+| 预览 iframe | 每个项目独立子域 `{project-uuid}.claudeusercontent.com`；主站 CSP `default-src 'none'; frame-ancestors 'none'`；token 4 段：`{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}` |
+| 生成产物运行时 | React **18.3.1** + Babel Standalone **7.29.0**（UMD，integrity hash 锁死）+ 内联 `style={{...}}` JS 对象 + Google Fonts + 多 JSX `<script type="text/babel" src="*.jsx">` 全局 window 挂载 |
+| Tweaks 协议 | artifact 内嵌 `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` + `EDIT_STYLE` postMessage 实时回写，不重跑模型 |
+| 客户端权威存储 | 浏览器持有完整 chats / messages / contentBlocks / 工具 IO / viewState / assets manifest，定期通过 `UpdateProjectData` 整包推回云端；**每个 tool call 的 input/output 都被持久化** |
+| `done` 复合操作 | EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData 一连串触发 |
+| Streaming | 不是 Anthropic 原生 SSE，OmeletteService 重新封装为 `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers` 自定义帧 |
+| 本地文件夹桥 | File System Access API + 4 个 `local_*` 工具（local_ls / local_read / local_grep / local_copy_to_project）；本地文件**不传** OmeletteService，只在 LLM 上下文里出现 |
+
+### Open Claude Design 长什么样
+
+我们把上面那张图原样搬过来：agent loop 留在浏览器，云端只做存储。整体形态对齐，只在工程取舍上简化（HTTP REST 替 Connect / gRPC-Web、Cloudflare Worker 替自研后端、BYOK 替托管 key）。
+
+```text
+浏览器 SPA（Vite + React 18.3.1 + React Router v6 + styled-components）
+├── 主 agent loop                          ← ToolLoopAgent（Vercel AI SDK）
+│     while (not done):
+│       streamText({ system, tools, messages, model })  ← 浏览器侧组装 + 直连 LLM
+│       parse tool_use → 浏览器侧 execute
+├── tools（apps/web/src/features/chat/tools/）
+│     edit_file / read_file / list_files / mark_done
+│     ↓ tool execute 内部 fetch worker REST
+├── 预览 iframe（srcdoc 装载）              ← React 18.3.1 + Babel Standalone 7.29.0
+│     postMessage RPC：SET_MODE / EDIT_STYLE /
+│     ELEMENT_SELECTED / OVERLAY_READY / IFRAME_ERROR
+└── Tweaks / Comment / Edit / Draw 四个浮层工具
+                ↓ HTTP REST + SSE（schema 锁在 packages/contracts）
+Cloudflare Worker（apps/api，Hono — 不参与 chat path，仅文件存储）
+   /api/projects/:id/files/:path  → D1 + R2 CRUD
+   /api/projects/:id/share-link   → 短期签名链接
+   /api/share/:token              → 公共预览
+   ├── D1（SQLite）：项目元数据 + 文件路径 → content_hash 映射
+   └── R2：sha256 内容寻址 blob
+
+LLM provider（用户 BYOK，浏览器直连，worker 看不见）
+   openrouter.ai 或任意 OpenAI 兼容端点
+```
+
+#### 沿用了哪些
+
+- **浏览器侧 agent loop** —— Vercel AI SDK 的 `ToolLoopAgent` 在 tab 里跑（原版用什么 agent 框架未公开，但 loop 宿主同位）
+- **客户端权威 + 后端整快照** —— D1 存项目元数据 + R2 存 sha256 内容寻址 blob，整包写入
+- **预览 iframe 的运行时栈** —— React 18.3.1 + Babel Standalone 7.29.0 同版本同 integrity，多 JSX 入口同语义
+- **协议字面量** —— Tweaks 的 `EDITMODE-BEGIN/END`、`SET_MODE` / `EDIT_STYLE` / `ELEMENT_SELECTED` / `OVERLAY_READY` 等 postMessage 类型、`<uuid>::verifier` 子 agent 命名约定，全部保留
+
+#### 主动偏离的地方
+
+- **Wire 协议** 从 Connect / gRPC-Web 简化到 HTTP REST + SSE（schema 锁在 [`packages/contracts`](packages/contracts/)，`.proto` 没复用）
+- **字体** 从商业 Anthropic Serif 换成 Google Fonts（Inter / Instrument Serif / JetBrains Mono），图标用 Lucide
+- **预览子域** 从 `*.claudeusercontent.com` 换成 Cloudflare Pages 默认子域（自部署可绑域）
+- **本地文件桥 / 第三方 MCP / verifier 子 agent** 暂未实装（roadmap）
+
+## 跟 nexu-io/open-design、OpenCoworkAI/open-codesign 的区别
+
+三个项目都是 Claude Design 的开源复刻，差异主要在 **agent loop 跑在哪、chat / 文件落在哪**。
+
+|  | Claude Design（原版） | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
+|---|---|---|---|---|
+| 形态 | Web (claude.ai) | Desktop (Electron) | Web app + 本地 daemon | **纯 Web + Cloudflare Workers** |
+| Agent loop 跑在哪 | 浏览器 tab | Electron 主进程内捆绑 [pi-ai] | 用户已装的 CLI（Claude Code / Codex / Cursor / Gemini / … 13 个适配器） | **浏览器 tab（Vercel AI SDK ToolLoopAgent，BYOK）** |
+| Chat / 文件落在哪 | 云端（OmeletteService + 内容寻址 blob） | 本地 SQLite + 本地文件系统 | 本地 SQLite + 本地文件系统 | **Cloudflare D1 + R2（你自己的账号）** |
+| 是否需要本地装 CLI / 桌面壳 | 不需要 | 需要（Electron 安装包） | 需要（npm + 13 个 CLI 之一） | **不需要 —— 浏览器开网页就能用** |
+| 跟原版的同构度 | 100% | 中（agent 在桌面 runtime 而非 web） | 中（agent 在用户 CLI，靠 daemon spawn） | **高 —— 浏览器跑 agent + 后端只做存储，跟原版同位** |
+| License | 闭源 | MIT | Apache-2.0 | Apache-2.0 |
+
+[ocod]: https://github.com/OpenCoworkAI/open-codesign
+[nexu]: https://github.com/nexu-io/open-design
+[pi-ai]: https://github.com/mariozechner/pi-ai
+
+简言之：**open-codesign / nexu-io 是 local-first（agent 在桌面或用户 CLI、文件在本地）；我们和原版 Claude Design 一样是 web-first（agent 在浏览器、文件在云端后端）**。三种形态各有取舍 —— 我们这一版选了跟 Anthropic 已上线产品最同构的那条路线。
 
 ## 致谢
 
@@ -54,7 +155,6 @@ Anthropic 的 [Claude Design](https://claude.ai/design) 把 LLM 变成了一个�
 ### 工具链
 
 - [Vercel AI SDK](https://github.com/vercel/ai) —— 多 provider 抽象，让 agent 循环能在浏览器 tab 里跑。
-- [OpenRouter](https://openrouter.ai/) —— 一把 BYOK key，通吃几十家 LLM provider。
 - [React](https://react.dev/) 与 [Babel](https://babeljs.io/) —— UMD 构建撑起浏览器内的预览运行时。
 - [Cloudflare Workers](https://workers.cloudflare.com/)、[D1](https://developers.cloudflare.com/d1/) 与 [R2](https://developers.cloudflare.com/r2/) —— 无服务器后端。
 - [Hono](https://hono.dev/)、[Vite](https://vitejs.dev/)、[Turbo](https://turbo.build/)，以及更广的 TypeScript / npm-workspaces 工具链。
@@ -66,22 +166,6 @@ Open Claude Design 是社区主导的开源复刻项目。**本项目与 Anthrop
 Agent 的部分行为指引 —— 具体指 [`apps/web/src/features/chat/system-prompt/`](apps/web/src/features/chat/system-prompt/) 下的 system prompt 内容 —— 改编自对 Anthropic 已上线 Claude Design 运行时的观察。我们以「fair use / 互操作性」为由保留这部分内容，以让开源复刻尽量忠实于原作表面。
 
 **若 Anthropic 团队希望我们移除或重写任何内容，我们会立即配合** —— 欢迎在 [github.com/imsai-sh/open-claude-design/issues](https://github.com/imsai-sh/open-claude-design/issues) 提 issue，或直接联系仓库维护者。
-
-## 一眼概览
-
-| | 你拿到的 |
-|---|---|
-| **形态** | 纯 Web —— Vite SPA + 一个 Cloudflare Worker。没有 Electron / 本地 daemon / 原生安装包。 |
-| **AI 运行时** | Vercel AI SDK 的 `ToolLoopAgent` **跑在浏览器 tab 里**。Tools（`edit_file` / `read_file` / `list_files` / `mark_done`）调 Worker 的 REST API 落盘文件；Worker 永远看不到 prompt 或 key。 |
-| **Provider** | OpenRouter 是首选 fan-out（一把 key 通吃 Anthropic / OpenAI / Google / Mistral / xAI / DeepSeek / Groq / Cerebras …）。直连 SDK 也都接好：`@ai-sdk/{anthropic,openai,google,mistral,xai,deepseek,groq,cerebras,cohere,vercel}`，加任意 OpenAI 兼容端点。Key 全部存在 `localStorage`。 |
-| **存储** | Cloudflare **D1**（SQLite）放元数据 + **R2** 放 sha256 内容寻址的文件 blob。一个 Worker 同时绑定。免费额度装得下绝大部分个人项目。 |
-| **预览表面** | 沙盒 iframe，跑 React 18.3.1 + ReactDOM + `@babel/standalone` 7.29.0 —— 由纯字符串拼接的 `srcdoc` 装载。React / npm 运行时依赖零泄漏。生产 / 离线 / 严格 CSP 场景可以 vendor UMD bundle。 |
-| **Tweaks** | Artifact 内嵌 `/*EDITMODE-BEGIN*/{...}/*EDITMODE-END*/` 块声明可调设计 token。宿主 UI 把它渲染成滑杆 / 颜色拣选；改动通过 `EDIT_STYLE` postMessage 实时回流，不重跑模型。 |
-| **Comment** | 在预览上随手点 pin 写评论，把 pin 上下文喂给 agent 做定向改写。 |
-| **Edit** | 点任意 DOM 元素 —— 浮窗弹出，改 inline 样式或 Tailwind 类名，改动持久化回项目源文件。 |
-| **Draw** | 用画笔工具在预览上画线；笔迹 + 截图作为下一回合输入，让模型按你手画的草图改。 |
-| **Wire 协议** | HTTP REST + Server-Sent Events。单一来源在 [`packages/contracts`](packages/contracts/) —— 每条 SSE 事件类型、postMessage 类型、路由 shape 都是这里的字面量。 |
-| **License** | Apache-2.0 |
 
 ## 能做什么
 
@@ -123,7 +207,7 @@ dev server 起来后打开 <http://localhost:5173>。第一次发 chat 会让你
 
 ## Cloudflare 自部署
 
-> 你出 Cloudflare 账号；你的用户出自己的 LLM key。我们不跑托管 SaaS。
+> 你出 Cloudflare 账号；你的用户出自己的 LLM key。
 
 ```bash
 npm run cf:provision    # 一次性：wrangler login + 建 D1 / R2 + 应用 schema
@@ -137,12 +221,6 @@ npm run deploy          # 每次：部署 Worker（API） + Pages（SPA）
 `deploy` 一次跑完：部署 Worker、把 React + Babel UMD bundle vendor 到 `apps/web/public/vendor/`（让预览能离线 / 在内网 / 严格 CSP 下跑）、build SPA、推送到 Cloudflare Pages（项目 `open-design-web`）。
 
 或者直接用内置的 GitHub Action —— push 到 `main` 触发 `.github/workflows/deploy.yml`，前提是你在仓库 secrets 里加了 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`（缺这两个时 workflow 会 no-op，所以 fork 仓库不会爆）。
-
-### 自定义域名
-
-在 Cloudflare 控制台给 Pages 项目挂自定义域（比如 `design.example.com`），给 Worker 挂另一个（比如 `api.design.example.com`）。SPA 期望 `/api/*` 能打到 worker —— 用 Pages Function route 或 Cloudflare Routes UI 把这个 path 重写过去。
-
-把 SPA 的 origin 加到 Worker 的 [`apps/api/wrangler.toml`](apps/api/wrangler.toml) `[vars] ALLOWED_ORIGINS` 里（逗号分隔）再重 deploy Worker，否则 CORS 会拒掉请求。
 
 ## 仓库结构
 
@@ -166,7 +244,7 @@ open-claude-design/
 
 ## 贡献
 
-欢迎 PR。项目 pre-alpha 阶段，贡献门槛宽松 —— 改个 typo、报个 bug、画一个 feature 草图都行。
+欢迎 PR。项目 pre-alpha 阶段，贡献门槛宽松。
 
 ```bash
 npm install

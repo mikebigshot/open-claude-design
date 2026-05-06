@@ -32,11 +32,112 @@
 
 **Open Claude Design — это верное open-source воссоздание этой поверхности с теми же техническими костями.** Везде, где у нас был выбор, мы опирались на то, что Anthropic реально выкатил — формат artifact, блок Tweaks `EDITMODE`, конвенция sub-agent `<uuid>::verifier`, путь in-iframe Babel Standalone для предпросмотра, грамматика `postMessage` четырёх инструментов (`SET_MODE` / `EDIT_STYLE` / `ELEMENT_SELECTED` / `OVERLAY_READY` / `IFRAME_ERROR` / …). Самый крупный единственный вход для этого кода — чтение того, что опубликовал Anthropic.
 
-Мы расходимся с Claude Design в одном направлении: **чистый web, никакой оболочки, никакого SaaS.** Всё работает во вкладке браузера плюс один Cloudflare Worker. Chat-agent (tool-loop из [Vercel AI SDK](https://github.com/vercel/ai)) исполняется _в вашей вкладке_ и общается с OpenRouter напрямую через ваш key — Worker занимается только хранением и никогда не видит ваших prompt-ов. Эта сделка покупает три вещи:
+**Как и в Claude Design, agent-loop остаётся во вкладке браузера, а chat / файлы / состояние проекта синхронизируются в ваш собственный backend.** Это самая важная точка структурного совпадения с оригиналом — облако Anthropic выступает только LLM-passthrough + исполнением tools + хранилищем снапшотов проекта, а сам agent-loop крутится в браузерной SPA. Мы делаем то же: tool-loop из [Vercel AI SDK](https://github.com/vercel/ai) работает в вашей вкладке, а chat / файлы / состояние проекта текут через Cloudflare Worker в D1 + R2, и Worker никогда не видит ваших prompt-ов. Эта форма **web-agent + backend-storage** — ровно та форма, которая масштабируется в SaaS.
 
-1. **Deploy одной командой на бесплатном аккаунте Cloudflare** — никакого Postgres, Redis, ECS, Docker.
-2. **Ни аккаунтов, ни общего SaaS, ни квот** — fork, deploy, кидайте друзьям ссылку.
-3. **Читаемая кодовая база** — строгий TS, npm workspaces, ~10 папок с исходниками. Самые интересные части (iframe runtime, протокол `EDITMODE`, agent-loop в браузере) укладываются в чтение на выходные.
+## Архитектура
+
+> Этот раздел — это неявная спецификация для кодовой базы. Выводы получены из логин-расследования `claude.ai/design` за 2026-04 — DOM-инспекция, перехват сети, чтение глобальных переменных, скачанные artifact-ы, деобфусцированный runtime и рабочий POC. Стараемся придерживаться непосредственно наблюдаемых фактов.
+
+### Как устроен Claude Design
+
+Та же форма, что и у Claude Code: браузер хостит agent, облако — это просто LLM-gateway + tool backend. Тело Chat-запроса одного хода — это прямой passthrough в Anthropic Messages API (полный system + tools + все messages, собирается на стороне клиента). Облачный `OmeletteService` **не поддерживает состояние диалога** — он только проксирует к LLM, исполняет tools и хранит снапшоты проектов.
+
+```text
+Browser SPA (Vite + React Router v6 + styled-components)
+├── Main agent loop                          ← the actual agent host
+│     while (not done):
+│       POST OmeletteService.Chat (Anthropic Messages API passthrough)
+│       parse tool_use → 9 routing buckets
+├── Verifier sub-agent (UUID::verifier)      ← FORK BOUNDARY role injection
+├── Preview iframe (*.claudeusercontent.com) ← srcdoc + injected runtime + postMessage RPC
+└── Local-folder bridge (File System Access API) ← 4 local_* tools via native browser API
+                ↓ Connect / gRPC-Web + Protobuf
+OmeletteService (thin LLM proxy + tool backend)
+   Chat              → api.anthropic.com passthrough
+   EditFile / GetFile / ListFiles / RecordAsset → project sandbox CRUD
+   UpdateProjectData → client-authoritative full snapshot
+   McpListTools      → third-party MCP server tool discovery
+   MintPreviewToken  → short-lived preview signature
+```
+
+#### Ключевые наблюдения
+
+| Параметр | Что реально едет в production |
+|---|---|
+| Frontend основного приложения | Vite + React Router v6 + styled-components; редактор кода — это нативный `<textarea>` плюс самописные `<div>` для номеров строк — никакой Monaco, никакого CodeMirror |
+| Backend-протокол | Connect / gRPC-Web + Protobuf; имя сервиса `anthropic.omelette.api.v1alpha.OmeletteService` |
+| Протокол tool-ов agent-а | MCP (Model Context Protocol) — поймали полный payload `tools/list` с полем `defer_loading`; сторонние MCP-серверы реально подключаются |
+| Маршрутизация tool-ов | 30+ tools раскидываются по 9 ведёркам: облачный RPC (EditFile / GetFile / …) / локальный FSA (local_*) / iframe DOM (show_html / eval_js / screenshot) / чистая клиентская логика (snip / update_todos) / spawned sub-agent / сторонний MCP / встроенные в LLM (web_search / web_fetch) |
+| Verifier sub-agent | Делит с основным agent **system prompt + toolset + history**; весь fork — это просто role-reset prompt, засунутый в fork tool_result + суффикс `::verifier` к sessionUUID + max_tokens поделённый пополам |
+| Preview iframe | Каждый проект на своём поддомене `{project-uuid}.claudeusercontent.com`; основной сайт ставит CSP `default-src 'none'; frame-ancestors 'none'`; preview-токены — это 4 сегмента: `{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}` |
+| Runtime для сгенерированного artifact | React **18.3.1** + Babel Standalone **7.29.0** (UMD, привязан integrity-hash) + inline `style={{...}}` JS-объекты + Google Fonts + multi-JSX `<script type="text/babel" src="*.jsx">`, монтируется на глобальный window |
+| Tweaks-протокол | Artifact-ы вставляют блоки `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` + `EDIT_STYLE` postMessage пишет обратно вживую, без перезапуска модели |
+| Client-authoritative storage | Браузер держит полные chats / messages / contentBlocks / I/O tool-ов / viewState / манифест assets и пушит полный снапшот обратно через `UpdateProjectData`. **Каждый вызов tool с input/output персистится** |
+| Compound-операция `done` | Триггерит цепочку EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData |
+| Streaming | Не нативный Anthropic SSE — OmeletteService переоборачивает его в кастомные кадры: `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers` |
+| Local-folder bridge | File System Access API + 4 tool-а `local_*` (local_ls / local_read / local_grep / local_copy_to_project); локальные файлы **никогда** не попадают в OmeletteService — они появляются только в LLM-контексте |
+
+### Как устроен Open Claude Design
+
+Эту диаграмму мы переносим как есть: agent-loop в браузере, облако — только хранилище. Общая форма совпадает с оригиналом; упрощаем только инженерные компромиссы (HTTP REST вместо Connect / gRPC-Web, Cloudflare Worker вместо кастомного backend, BYOK вместо хостед-ключей).
+
+```text
+Browser SPA (Vite + React 18.3.1 + React Router v6 + styled-components)
+├── Main agent loop                          ← ToolLoopAgent (Vercel AI SDK)
+│     while (not done):
+│       streamText({ system, tools, messages, model })  ← assembled client-side, direct to LLM
+│       parse tool_use → execute in browser
+├── tools (apps/web/src/features/chat/tools/)
+│     edit_file / read_file / list_files / mark_done
+│     ↓ tool execute fetches the worker REST endpoints
+├── Preview iframe (loaded via srcdoc)       ← React 18.3.1 + Babel Standalone 7.29.0
+│     postMessage RPC: SET_MODE / EDIT_STYLE /
+│     ELEMENT_SELECTED / OVERLAY_READY / IFRAME_ERROR
+└── Tweaks / Comment / Edit / Draw — four overlay tools
+                ↓ HTTP REST + SSE (schemas locked in packages/contracts)
+Cloudflare Worker (apps/api, Hono — outside the chat path, storage-only)
+   /api/projects/:id/files/:path  → D1 + R2 CRUD
+   /api/projects/:id/share-link   → short-lived signed link
+   /api/share/:token              → public preview
+   ├── D1 (SQLite): project metadata + path → content_hash mapping
+   └── R2: sha256 content-addressed blobs
+
+LLM provider (user BYOK, browser-direct, invisible to the worker)
+   openrouter.ai or any OpenAI-compatible endpoint
+```
+
+#### Что мы сохраняем от оригинала
+
+- **Agent-loop на стороне браузера** — `ToolLoopAgent` из Vercel AI SDK работает во вкладке (agent-фреймворк оригинала не публичен, но host тот же)
+- **Client-authoritative + backend-снапшот** — D1 хранит метаданные проекта, R2 хранит sha256 content-addressed blob-ы, пишутся как полные снапшоты
+- **Runtime preview iframe** — React 18.3.1 + Babel Standalone 7.29.0, те же версии и integrity-хеши, семантика multi-JSX entry сохранена
+- **Литералы протокола** — `EDITMODE-BEGIN/END` для Tweaks, типы postMessage `SET_MODE` / `EDIT_STYLE` / `ELEMENT_SELECTED` / `OVERLAY_READY`, конвенция именования sub-agent `<uuid>::verifier` — всё сохранено дословно
+
+#### Где мы намеренно расходимся
+
+- **Wire-протокол** — упрощён с Connect / gRPC-Web до HTTP REST + SSE (схемы в [`packages/contracts`](packages/contracts/), без переиспользования `.proto`)
+- **Шрифты** — коммерческий Anthropic Serif заменён на Google Fonts (Inter / Instrument Serif / JetBrains Mono); иконки через Lucide
+- **Поддомен предпросмотра** — `*.claudeusercontent.com` заменён на дефолтный поддомен Cloudflare Pages (свой домен — на self-host)
+- **Local-folder bridge / сторонний MCP / verifier sub-agent** — пока не реализованы (roadmap)
+
+## Отличия от nexu-io/open-design и OpenCoworkAI/open-codesign
+
+Все три проекта — open-source воссоздания Claude Design. Расхождение в основном про то, **где живёт agent-loop и куда уходят chat / файлы**.
+
+|  | Claude Design (оригинал) | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
+|---|---|---|---|---|
+| Форм-фактор | Web (claude.ai) | Desktop (Electron) | Web-приложение + локальный daemon | **Чистый web + Cloudflare Workers** |
+| Где работает agent-loop | Вкладка браузера | Внутри main-процесса Electron, бандлит [pi-ai] | CLI, который у вас уже стоит на диске (Claude Code / Codex / Cursor / Gemini / … 13 адаптеров) | **Вкладка браузера (Vercel AI SDK ToolLoopAgent, BYOK)** |
+| Где живут chat / файлы | Облако (OmeletteService + content-addressed blob-ы) | Локальный SQLite + локальная файловая система | Локальный SQLite + локальная файловая система | **Cloudflare D1 + R2 (ваш аккаунт)** |
+| Нужен локальный CLI / desktop-shell? | Нет | Да (Electron-инсталлятор) | Да (npm + один из 13 CLI) | **Нет — открыли страницу в браузере** |
+| Структурная верность оригиналу | 100% | Средняя (agent на desktop-runtime, не в web) | Средняя (agent в CLI пользователя, спаунится daemon-ом) | **Высокая — agent в браузере + backend как хранилище, та же форма, что и у оригинала** |
+| Лицензия | Closed | MIT | Apache-2.0 | Apache-2.0 |
+
+[ocod]: https://github.com/OpenCoworkAI/open-codesign
+[nexu]: https://github.com/nexu-io/open-design
+[pi-ai]: https://github.com/mariozechner/pi-ai
+
+Короче: **open-codesign и nexu-io — local-first (agent на desktop или в CLI пользователя, файлы на диске); мы и оригинальный Claude Design — web-first (agent в браузере, файлы в облачном backend)**. У каждого есть свои компромиссы — мы выбрали тот, что структурно наиболее близок к тому, что Anthropic реально выкатил.
 
 ## Благодарности
 
@@ -54,7 +155,6 @@
 ### Инструментарий
 
 - [Vercel AI SDK](https://github.com/vercel/ai) — multi-provider абстракция, благодаря которой agent-loop работает во вкладке браузера.
-- [OpenRouter](https://openrouter.ai/) — один BYOK key перед десятками LLM-провайдеров.
 - [React](https://react.dev/) и [Babel](https://babeljs.io/) — UMD-сборки, питающие in-iframe runtime предпросмотра.
 - [Cloudflare Workers](https://workers.cloudflare.com/), [D1](https://developers.cloudflare.com/d1/) и [R2](https://developers.cloudflare.com/r2/) — backend без сервера, за которым нужно следить.
 - [Hono](https://hono.dev/), [Vite](https://vitejs.dev/), [Turbo](https://turbo.build/) и более широкий toolchain TypeScript / npm-workspaces.
@@ -66,22 +166,6 @@ Open Claude Design — это сообществом созданный open-sou
 Часть инструкций поведения agent — конкретно содержимое system prompt в [`apps/web/src/features/chat/system-prompt/`](apps/web/src/features/chat/system-prompt/) — адаптирована из наблюдений за публичным runtime Claude Design от Anthropic. Мы сохраняем этот контент по обоснованию fair use / совместимости, чтобы open-source-воссоздание оставалось максимально близким к оригинальной поверхности.
 
 **Если кто-то из Anthropic захочет, чтобы мы убрали или переписали какой-либо контент, мы сделаем это незамедлительно** — пожалуйста, откройте issue на [github.com/imsai-sh/open-claude-design/issues](https://github.com/imsai-sh/open-claude-design/issues) или свяжитесь с мейнтейнером репозитория.
-
-## Одним взглядом
-
-| | Что вы получаете |
-|---|---|
-| **Форм-фактор** | Чистый web — Vite SPA + один Cloudflare Worker. Никакого Electron, никакого локального daemon, никаких нативных установщиков. |
-| **AI runtime** | `ToolLoopAgent` из Vercel AI SDK работает **во вкладке браузера**. Tools (`edit_file` / `read_file` / `list_files` / `mark_done`) вызывают REST API Worker-а для сохранения файлов; Worker никогда не видит prompt-ов или ключей. |
-| **Провайдеры** | OpenRouter — это default fan-out (один key → Anthropic, OpenAI, Google, Mistral, xAI, DeepSeek, Groq, Cerebras, …). Прямые SDK провайдеров тоже подключены: `@ai-sdk/{anthropic,openai,google,mistral,xai,deepseek,groq,cerebras,cohere,vercel}` плюс любой OpenAI-совместимый endpoint. Ключи живут в `localStorage`. |
-| **Хранилище** | Cloudflare **D1** (SQLite) для метаданных + **R2** для sha256 content-addressed blob-ов файлов. Один Worker связывает оба. Бесплатного тарифа хватает с запасом для сольных проектов. |
-| **Поверхность предпросмотра** | Песочный iframe, рендерящий React 18.3.1 + ReactDOM + `@babel/standalone` 7.29.0 — собирается из чистого строкового `srcdoc`. Ноль протечек React/npm runtime в предпросмотр. UMD-bundle можно vendor-нуть для offline / строгий CSP deploy. |
-| **Tweaks** | Artifact-ы выдают блок `/*EDITMODE-BEGIN*/{...}/*EDITMODE-END*/`, объявляющий настраиваемые design token-ы. Host UI выводит ползунки / pickers; изменения текут обратно как `EDIT_STYLE` `postMessage`-события без перезапуска модели. |
-| **Comment** | Кидайте pin-ы куда угодно по живому предпросмотру, пишите комментарий, отправляйте контекст pin-а agent-у для точечной переписи. |
-| **Edit** | Кликаете по любому DOM-элементу — всплывает inspector, вы крутите inline-стили или Tailwind-классы, изменение сохраняется обратно в файлы проекта. |
-| **Draw** | Скетчите поверх предпросмотра pen-инструментом; штрихи плюс скриншот летят в модель, чтобы она переписала по вашему ручному наброску. |
-| **Wire** | HTTP REST + Server-Sent Events. Единый источник истины в [`packages/contracts`](packages/contracts/) — каждый тип SSE-события, тип postMessage и форма route — это литерал оттуда. |
-| **License** | Apache-2.0 |
 
 ## Что оно делает
 
@@ -123,7 +207,7 @@ npm run dev      # web на :5173, api на :8787 (Ctrl-C для останов�
 
 ## Self-host на Cloudflare
 
-> Вы приносите аккаунт Cloudflare; ваши пользователи приносят свои LLM key. Мы не держим хостед SaaS.
+> Вы приносите аккаунт Cloudflare; ваши пользователи приносят свои LLM key.
 
 ```bash
 npm run cf:provision    # один раз: wrangler login + создать D1 / R2 + применить schema
@@ -137,12 +221,6 @@ npm run deploy          # каждый раз: ship Worker (API) + Pages (SPA)
 Что делает `deploy`: деплоит Worker, vendor-ит UMD-bundle React + Babel в `apps/web/public/vendor/`, чтобы предпросмотры работали offline / за firewall / при строгом CSP, билдит SPA, шипит на Cloudflare Pages (проект `open-design-web`).
 
 Или используйте встроенный GitHub Action — push в `main` триггерит `.github/workflows/deploy.yml`, как только вы добавите `CLOUDFLARE_API_TOKEN` и `CLOUDFLARE_ACCOUNT_ID` в repo secrets (без них workflow no-op-ит, поэтому fork репозитория безопасен).
-
-### Свой домен
-
-В дашборде Cloudflare прицепите свой домен к Pages-проекту (например, `design.example.com`) и к Worker (например, `api.design.example.com`). SPA ожидает, что `/api/*` доходит до Worker — настройте Pages Function route или Cloudflare Routes UI rewrite для этого пути.
-
-Добавьте origin SPA в `ALLOWED_ORIGINS` `[vars]` Worker-а в [`apps/api/wrangler.toml`](apps/api/wrangler.toml) (через запятую), затем перезадеплойте Worker — иначе CORS будет блокировать запросы.
 
 ## Структура repo
 
@@ -166,7 +244,7 @@ open-claude-design/
 
 ## Контрибьютинг
 
-PR-ы приветствуются. Проект в pre-alpha, и планка для контрибьюции низкая — поправьте опечатку, заведите баг, набросайте feature.
+PR-ы приветствуются. Проект в pre-alpha, и планка для контрибьюции низкая.
 
 ```bash
 npm install
