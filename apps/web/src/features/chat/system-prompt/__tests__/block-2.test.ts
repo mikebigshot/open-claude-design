@@ -162,4 +162,30 @@ describe('buildBlock2', () => {
     });
     expect(outUndef).not.toContain('## No design system selected');
   });
+
+  // ── v2 trim-tags note ──────────────────────────────────────────────────
+  // v2 capture (research/claude-design-v2/artifacts/system-prompt/block-1-context.md)
+  // appends a "Note: Parts of this conversation may be automatically trimmed..."
+  // paragraph that teaches the agent to recognise (and not echo) the system-
+  // inserted <dropped_messages> / <trimmed> / <orphaned_*> sigils that the
+  // context-management pipeline produces when a long conversation needs to
+  // shrink. See research/claude-design-v2/09-changes-vs-v1.md §9.3.3.
+  it('appends the trim-tags note paragraph at the end (post-footer)', () => {
+    const out = buildBlock2({
+      designSystemId: undefined,
+      skills: [],
+      claudeMdContent: undefined,
+      userEmailDomain: undefined,
+    });
+    expect(out).toContain('Parts of this conversation may be automatically trimmed');
+    expect(out).toContain('<dropped_messages>');
+    expect(out).toContain('<orphaned_tool_call>');
+    expect(out).toContain('<orphaned_tool_result>');
+    expect(out).toContain('<trimmed_image>');
+    // The paragraph is positioned AFTER the user-email-domain footer per
+    // v2 verbatim capture.
+    const footerIdx = out.indexOf('<user-email-domain>');
+    const trimNoteIdx = out.indexOf('Parts of this conversation');
+    expect(trimNoteIdx).toBeGreaterThan(footerIdx);
+  });
 });

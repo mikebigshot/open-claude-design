@@ -106,8 +106,7 @@ export const fr: Dict = {
   'header.settings': 'Paramètres',
 
   'workspace.chatToolsAria': 'Onglets et outils de chat',
-  'workspace.dropFilesHint':
-    '↓ DÉPOSEZ DES FICHIERS ICI — Atelier les utilisera comme contexte',
+  'workspace.dropFilesHint': '↓ DÉPOSEZ DES FICHIERS ICI — Atelier les utilisera comme contexte',
   'workspace.errorMissingId': 'ID de projet manquant.',
   'workspace.errorNotFoundTitle': 'Projet introuvable',
   'workspace.errorNotFoundLine1': "Nous n'avons pas trouvé de projet avec l'id {id}.",
@@ -159,7 +158,7 @@ export const fr: Dict = {
   'fileTree.todosLabel': 'Tâches',
   'fileTree.empty': "Le projet n'a pas encore de fichiers.",
   'fileTree.emptyHint':
-    "Cliquez sur le bouton + pour démarrer un nouveau chat et demander à Atelier de créer des fichiers.",
+    'Cliquez sur le bouton + pour démarrer un nouveau chat et demander à Atelier de créer des fichiers.',
   'fileTree.errorLoad': 'Impossible de charger les fichiers : {error}',
   'fileTree.newFile': 'Nouveau fichier',
   'fileTree.newFolder': 'Nouveau dossier',
@@ -240,8 +239,24 @@ export const fr: Dict = {
 
   'chat.tool.writing': 'ÉCRIT',
   'chat.tool.reading': 'LIT',
+  'chat.tool.editing': 'ÉDITE',
   'chat.tool.listing': 'LISTE',
+  'chat.tool.copying': 'COPIE',
+  'chat.tool.deleting': 'SUPPRIME',
+  'chat.tool.viewing': 'VOIT',
+  'chat.tool.fetching': 'CHARGE',
+  'chat.tool.grep': 'CHERCHE',
   'chat.tool.done': 'TERMINÉ',
+  'chat.tool.snipping': 'COUPE',
+  'chat.tool.todos': 'TÂCHES',
+  'chat.tool.registering': 'ASSETS',
+  'chat.tool.skill': 'SKILL',
+  'chat.tool.verifying': 'VÉRIFIE',
+  'chat.tool.feedback': 'RETOUR',
+  'chat.tool.questioning': 'DEMANDE',
+  'chat.tool.screenshotting': 'CAPTURE',
+  'chat.tool.evaluating': 'ÉVAL',
+  'chat.tool.logs': 'LOGS',
 
   'comments.errorLoad':
     'Impossible de charger les commentaires : {error}. Rechargez la page pour réessayer.',
@@ -269,8 +284,15 @@ export const fr: Dict = {
   'import.option.figma': 'Fichier Figma',
   'import.option.uploadScreenshots': 'Téléverser des captures',
   'import.option.designSystems': 'Parcourir les systèmes de design',
+  'import.option.attachSkill': 'Joindre une compétence',
   'import.soonBadge': 'BIENTÔT',
   'import.comingSoon': 'Bientôt disponible',
+
+  'skillPicker.menuAria': 'Sélecteur de compétence',
+  'skillPicker.empty': 'Aucune compétence disponible',
+
+  'skillChip.kindLabel': 'compétence',
+  'skillChip.removeAria': 'Retirer {name}',
 
   'modelDropdown.noKey': 'pas de clé',
   'modelDropdown.addKeyFirst': 'Ajoutez d’abord une clé {provider}',
@@ -289,7 +311,7 @@ export const fr: Dict = {
   'settings.testing': 'Test en cours…',
   'settings.keyOk': '✓ Clé valide',
   'settings.storageNote':
-    "Stocké uniquement dans le localStorage de ce navigateur ; jamais envoyé à nos serveurs.",
+    'Stocké uniquement dans le localStorage de ce navigateur ; jamais envoyé à nos serveurs.',
   'settings.getKey': 'Obtenir une clé →',
   'settings.language': 'Langue',
   'settings.languageHint': "Changez la langue de l'interface. Enregistré dans ce navigateur.",

@@ -40,6 +40,93 @@ const OVERLAY_IIFE_SOURCE = `(function () {
   var pinned = null;
   var currentMode = 'default';
 
+  // ---------------------------------------------------------------------------
+  // Console capture — agent v2 get_webview_logs reads this buffer. Capped at
+  // last 200 entries to bound memory; we hook log/warn/error/info/debug.
+  // ---------------------------------------------------------------------------
+  var LOG_BUFFER_LIMIT = 200;
+  if (!window.__cs_logbuf) window.__cs_logbuf = [];
+  function pushLog(level, args) {
+    try {
+      var parts = [];
+      for (var i = 0; i < args.length; i++) {
+        var a = args[i];
+        if (a && typeof a === 'object') {
+          try { parts.push(JSON.stringify(a)); } catch (_) { parts.push('[object]'); }
+        } else {
+          parts.push(String(a));
+        }
+      }
+      var entry = { level: level, message: parts.join(' '), ts: Date.now() };
+      window.__cs_logbuf.push(entry);
+      while (window.__cs_logbuf.length > LOG_BUFFER_LIMIT) window.__cs_logbuf.shift();
+    } catch (_) {}
+  }
+  if (!window.__cs_console_hooked) {
+    window.__cs_console_hooked = true;
+    var levels = ['log', 'warn', 'error', 'info', 'debug'];
+    for (var li = 0; li < levels.length; li++) {
+      (function (lv) {
+        var orig = console[lv];
+        console[lv] = function () {
+          pushLog(lv, arguments);
+          if (typeof orig === 'function') {
+            try { orig.apply(console, arguments); } catch (_) {}
+          }
+        };
+      })(levels[li]);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // safeStringify — JSON.stringify with cycle handling. Used for AGENT_EVAL_JS.
+  // ---------------------------------------------------------------------------
+  function safeStringify(value) {
+    var seen = [];
+    return JSON.stringify(value, function (_k, v) {
+      if (v && typeof v === 'object') {
+        if (seen.indexOf(v) !== -1) return '[Circular]';
+        seen.push(v);
+      }
+      return v;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // domToDataUrl — minimal html-to-image substitute. Wraps body HTML in an SVG
+  // foreignObject, draws to canvas, exports as PNG dataURL. Limited fidelity
+  // (no external CSS / web fonts) but matches agent v2 contract that screenshots
+  // are DOM re-renders, not pixel captures.
+  // ---------------------------------------------------------------------------
+  function domToDataUrl() {
+    return new Promise(function (resolve, reject) {
+      try {
+        var w = Math.min(window.innerWidth || document.documentElement.clientWidth || 800, 1920);
+        var h = Math.min(window.innerHeight || document.documentElement.clientHeight || 600, 1920);
+        var clone = document.documentElement.cloneNode(true);
+        var serialized = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '">'
+          + '<foreignObject width="100%" height="100%">'
+          + new XMLSerializer().serializeToString(clone)
+          + '</foreignObject></svg>';
+        var url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serialized);
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () {
+          try {
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          } catch (e) { reject(e); }
+        };
+        img.onerror = function () { reject(new Error('image decode failed')); };
+        img.src = url;
+      } catch (e) { reject(e); }
+    });
+  }
+
   var HOVER_OUTLINE = '2px solid #c96442';
   var PINNED_OUTLINE = '2.5px solid #b5441a';
 
@@ -179,6 +266,99 @@ const OVERLAY_IIFE_SOURCE = `(function () {
       applyStyle(data.property, data.value);
       return;
     }
+    // Agent v2 verifier-side requests (no __codesign envelope; identified by
+    // type + requestId). See packages/iframe-runtime ParentToIframe union.
+    if (data && data.type === 'AGENT_GET_LOGS' && data.requestId) {
+      try {
+        var buf = window.__cs_logbuf || [];
+        var copy = [];
+        for (var li = 0; li < buf.length; li++) copy.push(buf[li]);
+        window.parent.postMessage({
+          type: 'AGENT_GET_LOGS_RESULT',
+          requestId: data.requestId,
+          ok: true,
+          logs: copy
+        }, '*');
+      } catch (_e) {}
+      return;
+    }
+    if (data && data.type === 'AGENT_EVAL_JS' && data.requestId) {
+      var evalReqId = data.requestId;
+      var evalCode = String(data.code || '');
+      try {
+        var fn = new Function('return (async function () { return (' + evalCode + '); })()');
+        Promise.resolve(fn()).then(function (val) {
+          var serialized;
+          try {
+            serialized = safeStringify(val);
+          } catch (_e) {
+            serialized = '"<unserializable>"';
+          }
+          try {
+            window.parent.postMessage({
+              type: 'AGENT_EVAL_JS_RESULT',
+              requestId: evalReqId,
+              ok: true,
+              value: serialized
+            }, '*');
+          } catch (_e) {}
+        }).catch(function (err) {
+          try {
+            window.parent.postMessage({
+              type: 'AGENT_EVAL_JS_RESULT',
+              requestId: evalReqId,
+              ok: false,
+              error: String(err && err.message || err)
+            }, '*');
+          } catch (_e) {}
+        });
+      } catch (err) {
+        try {
+          window.parent.postMessage({
+            type: 'AGENT_EVAL_JS_RESULT',
+            requestId: evalReqId,
+            ok: false,
+            error: String(err && err.message || err)
+          }, '*');
+        } catch (_e) {}
+      }
+      return;
+    }
+    if (data && data.type === 'AGENT_SCREENSHOT' && data.requestId) {
+      var shotReqId = data.requestId;
+      try {
+        domToDataUrl().then(function (url) {
+          try {
+            window.parent.postMessage({
+              type: 'AGENT_SCREENSHOT_RESULT',
+              requestId: shotReqId,
+              ok: true,
+              dataUrl: url
+            }, '*');
+          } catch (_e) {}
+        }).catch(function (err) {
+          try {
+            window.parent.postMessage({
+              type: 'AGENT_SCREENSHOT_RESULT',
+              requestId: shotReqId,
+              ok: false,
+              error: String(err && err.message || err)
+            }, '*');
+          } catch (_e) {}
+        });
+      } catch (err) {
+        try {
+          window.parent.postMessage({
+            type: 'AGENT_SCREENSHOT_RESULT',
+            requestId: shotReqId,
+            ok: false,
+            error: String(err && err.message || err)
+          }, '*');
+        } catch (_e) {}
+      }
+      return;
+    }
+
     // window.claude.complete() streaming: route chunk/done/error to the
     // pending request keyed by id.
     if (data.type === 'CLAUDE_COMPLETE_CHUNK' && data.id && claudePending[data.id]) {

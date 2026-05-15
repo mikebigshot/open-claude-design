@@ -29,9 +29,8 @@ describe('computeCommonDirPrefix', () => {
 
 // ── importProjectFromZip integration with mocked api/fetch ──
 
-const apiSpy = vi.fn<
-  (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>
->();
+const apiSpy =
+  vi.fn<(path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>>();
 
 vi.mock('../api', async () => {
   return {
@@ -142,7 +141,14 @@ describe('importProjectFromZip', () => {
     });
     apiSpy.mockImplementation(async (path, init) => {
       if (path === '/api/projects' && init?.method === 'POST') {
-        return { id: 'p', name: 'demo', type: 'prototype', fidelity: 'high', createdAt: 'x', updatedAt: 'x' };
+        return {
+          id: 'p',
+          name: 'demo',
+          type: 'prototype',
+          fidelity: 'high',
+          createdAt: 'x',
+          updatedAt: 'x',
+        };
       }
       return { path: '', sha256: '', size: 0, version: 1 };
     });
@@ -159,5 +165,4 @@ describe('importProjectFromZip', () => {
     expect(last.done).toBe(last.total);
     expect(last.total).toBe(3);
   });
-
 });

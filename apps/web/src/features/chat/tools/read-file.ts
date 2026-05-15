@@ -10,7 +10,9 @@ export function readFileTool(projectId: string) {
       path: z.string().describe('File path relative to project root.'),
     }),
     execute: async ({ path }, { abortSignal }) => {
-      const url = buildUrl(`/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`);
+      const url = buildUrl(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`,
+      );
       const res = await fetch(url, { method: 'GET', signal: abortSignal });
       if (res.status === 404) {
         return { ok: false, error: 'not_found', path };

@@ -22,7 +22,9 @@ export function viewImageTool(projectId: string) {
       'Read an image file in the project so you can see its contents in the next turn. Use for screenshots / mockups / reference images.',
     inputSchema: z.object({ path: z.string().describe('Image file path.') }),
     execute: async ({ path }, { abortSignal }) => {
-      const url = buildUrl(`/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`);
+      const url = buildUrl(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`,
+      );
       const res = await fetch(url, { signal: abortSignal });
       if (res.status === 404) return { ok: false as const, error: 'not_found' as const };
       if (!res.ok) throw new Error(`view_image failed: ${res.status}`);

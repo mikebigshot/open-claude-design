@@ -61,8 +61,7 @@ export const en: Dict = {
   'home.importProgress': 'Uploading {done}/{total}…',
   'home.importProgressWith': 'Uploading {done}/{total}… ({current})',
   'home.importZipAria': 'Import project zip',
-  'home.importToastSkipped':
-    'Imported {uploaded} files. Skipped {skipped} (binary / oversize).',
+  'home.importToastSkipped': 'Imported {uploaded} files. Skipped {skipped} (binary / oversize).',
   'home.importToastOk': 'Imported {uploaded} files into "{name}".',
   'home.importFailed': 'Import failed',
 
@@ -238,11 +237,26 @@ export const en: Dict = {
 
   'chat.tool.writing': 'WRITING',
   'chat.tool.reading': 'READING',
+  'chat.tool.editing': 'EDITING',
   'chat.tool.listing': 'LISTING',
+  'chat.tool.copying': 'COPYING',
+  'chat.tool.deleting': 'DELETING',
+  'chat.tool.viewing': 'VIEWING',
+  'chat.tool.fetching': 'FETCHING',
+  'chat.tool.grep': 'GREP',
   'chat.tool.done': 'DONE',
+  'chat.tool.snipping': 'SNIP',
+  'chat.tool.todos': 'TODOS',
+  'chat.tool.registering': 'ASSETS',
+  'chat.tool.skill': 'SKILL',
+  'chat.tool.verifying': 'VERIFY',
+  'chat.tool.feedback': 'FEEDBACK',
+  'chat.tool.questioning': 'ASKING',
+  'chat.tool.screenshotting': 'SCREEN',
+  'chat.tool.evaluating': 'EVAL',
+  'chat.tool.logs': 'LOGS',
 
-  'comments.errorLoad':
-    "Couldn't load comments: {error}. Reload the page to try again.",
+  'comments.errorLoad': "Couldn't load comments: {error}. Reload the page to try again.",
   'comments.errorPartial':
     "Couldn't reload all comments: {error}. The list below may be incomplete.",
   'comments.errorReload':
@@ -267,8 +281,15 @@ export const en: Dict = {
   'import.option.figma': 'Figma file',
   'import.option.uploadScreenshots': 'Upload screenshots',
   'import.option.designSystems': 'Browse design systems',
+  'import.option.attachSkill': 'Attach skill',
   'import.soonBadge': 'SOON',
   'import.comingSoon': 'Coming soon',
+
+  'skillPicker.menuAria': 'Skill picker',
+  'skillPicker.empty': 'No skills available',
+
+  'skillChip.kindLabel': 'skill',
+  'skillChip.removeAria': 'Remove {name}',
 
   'modelDropdown.noKey': 'no key',
   'modelDropdown.addKeyFirst': 'Add a {provider} key first',
@@ -286,8 +307,7 @@ export const en: Dict = {
   'settings.enterKeyError': 'Enter a key first',
   'settings.testing': 'Testing…',
   'settings.keyOk': '✓ Key works',
-  'settings.storageNote':
-    "Stored only in this browser's localStorage; never sent to our servers.",
+  'settings.storageNote': "Stored only in this browser's localStorage; never sent to our servers.",
   'settings.getKey': 'Get a key →',
   'settings.language': 'Language',
   'settings.languageHint': 'Switch the interface language. Saved to this browser.',

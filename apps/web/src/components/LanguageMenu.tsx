@@ -188,9 +188,7 @@ export function LanguageMenu({ variant = 'pill' }: LanguageMenuProps) {
               >
                 <ItemLabel>{LOCALE_LABEL[code]}</ItemLabel>
                 <ItemCode>{code}</ItemCode>
-                {active && (
-                  <Check aria-hidden="true">✓</Check>
-                )}
+                {active && <Check aria-hidden="true">✓</Check>}
               </Item>
             );
           })}

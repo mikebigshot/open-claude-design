@@ -240,6 +240,91 @@ describe('useAgentChat', () => {
     expect(body.chatId).toBe('c1');
   });
 
+  // F2 — Spec §4.3 step 5: persisted user message must carry `attachments[]`
+  // so ChatMsg can render skill chips after a chat reload. The wrapper
+  // inlines the content into the outgoing text (for the model) but ALSO
+  // tacks the original attachments[] onto the just-pushed user UIMessage
+  // (via setMessages) so the persist round-trip captures them.
+  it('sendMessage with attachments stamps the original attachments[] onto the pushed user message and inlines text', async () => {
+    // The underlying chat already has the user message pushed at this point
+    // (mirrors AI SDK behaviour: sendMessage pushes synchronously before its
+    // first await). Our wrapper's setMessages callback runs against this
+    // state to add `attachments`.
+    fakeChat.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        parts: [
+          {
+            type: 'text',
+            text: '<skill-attachment name="X">…</skill-attachment>\n\nplease make a deck',
+          },
+        ],
+      },
+    ];
+
+    const { result } = renderHook(
+      () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
+      { wrapper },
+    );
+
+    const skillAttachment = {
+      id: 'att-1',
+      name: 'Make a deck',
+      type: 'skill' as const,
+      content: 'Skill body here.',
+    };
+
+    await act(async () => {
+      await result.current.sendMessage({
+        text: 'please make a deck',
+        attachments: [skillAttachment],
+        // `attachments` is our wrapper-side extension on top of the AI SDK's
+        // sendMessage shape — cast through unknown because the SDK's tuple
+        // overload doesn't allow extra fields.
+      } as unknown as Parameters<typeof result.current.sendMessage>[0]);
+    });
+
+    // 1) chat.sendMessage receives the inlined text + NO `attachments` field
+    const forwarded = fakeChat.sendMessage.mock.calls[0]![0] as {
+      text: string;
+      attachments?: unknown;
+    };
+    expect(forwarded.attachments).toBeUndefined();
+    expect(forwarded.text).toContain('<skill-attachment name="Make a deck">');
+    expect(forwarded.text).toContain('Skill body here.');
+    expect(forwarded.text).toContain('please make a deck');
+
+    // 2) setMessages was called to stamp attachments onto the just-pushed
+    //    user message. After the setMessages callback runs, fakeChat.messages
+    //    holds the updated user message.
+    const userMessages = fakeChat.messages.filter((m) => m.role === 'user');
+    const lastUser = userMessages.at(-1);
+    expect(lastUser).toBeDefined();
+    expect((lastUser as { attachments?: unknown[] }).attachments).toEqual([skillAttachment]);
+  });
+
+  it('sendMessage without attachments does NOT call setMessages to stamp', async () => {
+    fakeChat.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'hi' }] }];
+    fakeChat.setMessages.mockClear();
+    const { result } = renderHook(
+      () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.sendMessage({ text: 'hi' });
+    });
+
+    // Even after hydration's setMessages (called once during the effect),
+    // no additional stamping call should occur because there are no
+    // attachments. (Hydration's setMessages was called against
+    // `apiMock.mockClear()` not the case here, but to be safe:)
+    // Verify last user message doesn't acquire attachments[].
+    const lastUser = fakeChat.messages.at(-1) as { attachments?: unknown };
+    expect(lastUser.attachments).toBeUndefined();
+  });
+
   it('uses keepalive only when serialized body is under 50KB', async () => {
     fakeChat.messages = [{ id: 'u1', role: 'user', parts: [{ type: 'text', text: 'tiny' }] }];
 

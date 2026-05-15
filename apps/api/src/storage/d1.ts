@@ -9,14 +9,17 @@
 // - 不在 helper 里做事务编排，调用方按需用 db.batch()
 
 import type {
+  AssetRegistration,
   Chat,
   Comment,
   CreateProjectRequest,
   Fidelity,
   Project,
   ProjectType,
+  RegisteredAsset,
 } from '@open-design/contracts';
 import type {
+  AssetRow,
   BlobRow,
   ChatRow,
   CommentRow,
@@ -500,5 +503,125 @@ function rowToComment(row: CommentRow): Comment {
     selector: row.selector,
     filePath: row.file_path,
     createdAt: row.created_at,
+  };
+}
+
+// ============================================================================
+// assets
+// ============================================================================
+
+/**
+ * Register one asset. If a row with the same (project_id, asset, path) already
+ * exists, **update** it (status resets to 'needs-review' per v2 spec) — keep
+ * the same id so the UI can reference it stably.
+ */
+export async function upsertAsset(
+  db: D1Database,
+  projectId: string,
+  input: AssetRegistration,
+): Promise<RegisteredAsset> {
+  const now = new Date().toISOString();
+  const existing = await db
+    .prepare(
+      `SELECT id, project_id, asset, path, subtitle, viewport_w, viewport_h, status, group_, created_at, updated_at
+       FROM assets WHERE project_id = ?1 AND asset = ?2 AND path = ?3`,
+    )
+    .bind(projectId, input.asset, input.path)
+    .first<AssetRow>();
+
+  const status = input.status ?? 'needs-review';
+  const subtitle = input.subtitle ?? null;
+  const viewportW = input.viewport?.width ?? null;
+  const viewportH = input.viewport?.height ?? null;
+  const group = input.group ?? null;
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE assets
+         SET subtitle = ?1,
+             viewport_w = ?2,
+             viewport_h = ?3,
+             status = 'needs-review',
+             group_ = ?4,
+             updated_at = ?5
+         WHERE project_id = ?6 AND id = ?7`,
+      )
+      .bind(subtitle, viewportW, viewportH, group, now, projectId, existing.id)
+      .run();
+    return rowToAsset({
+      ...existing,
+      subtitle,
+      viewport_w: viewportW,
+      viewport_h: viewportH,
+      status: 'needs-review',
+      group_: group,
+      updated_at: now,
+    });
+  }
+
+  // New row.
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  await db
+    .prepare(
+      `INSERT INTO assets (id, project_id, asset, path, subtitle, viewport_w, viewport_h, status, group_, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)`,
+    )
+    .bind(
+      id,
+      projectId,
+      input.asset,
+      input.path,
+      subtitle,
+      viewportW,
+      viewportH,
+      status,
+      group,
+      now,
+    )
+    .run();
+  return {
+    id,
+    projectId,
+    asset: input.asset,
+    path: input.path,
+    subtitle,
+    viewport: viewportW !== null ? { width: viewportW, height: viewportH ?? undefined } : null,
+    status,
+    group,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** ListAssets — by project, ordered by group then asset name. */
+export async function listAssets(db: D1Database, projectId: string): Promise<RegisteredAsset[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, project_id, asset, path, subtitle, viewport_w, viewport_h, status, group_, created_at, updated_at
+       FROM assets
+       WHERE project_id = ?1
+       ORDER BY group_ NULLS LAST, asset ASC, created_at ASC`,
+    )
+    .bind(projectId)
+    .all<AssetRow>();
+  return (result.results ?? []).map(rowToAsset);
+}
+
+function rowToAsset(row: AssetRow): RegisteredAsset {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    asset: row.asset,
+    path: row.path,
+    subtitle: row.subtitle,
+    viewport:
+      row.viewport_w !== null
+        ? { width: row.viewport_w, height: row.viewport_h ?? undefined }
+        : null,
+    status: row.status,
+    group: row.group_,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }

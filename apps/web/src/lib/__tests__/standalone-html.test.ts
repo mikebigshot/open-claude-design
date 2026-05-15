@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  buildStandaloneHtml,
-  deriveStandaloneHtmlFilename,
-} from '../standalone-html';
+import { buildStandaloneHtml, deriveStandaloneHtmlFilename } from '../standalone-html';
 
 describe('deriveStandaloneHtmlFilename', () => {
   it('appends " Prototype.html" suffix to the project name', () => {
@@ -119,4 +116,3 @@ describe('buildStandaloneHtml', () => {
     expect(idx('src="./app.jsx"')).toBeLessThan(idx('src="./screen-test.jsx"'));
   });
 });
-

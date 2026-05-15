@@ -153,14 +153,7 @@ const ErrorText = styled.div`
 `;
 
 // PAGES (独立可渲染入口) → COMPONENTS (.jsx) → 其他。
-const SECTION_ORDER: Section[] = [
-  'PAGES',
-  'COMPONENTS',
-  'SCRIPTS',
-  'IMAGES',
-  'SKETCHES',
-  'OTHER',
-];
+const SECTION_ORDER: Section[] = ['PAGES', 'COMPONENTS', 'SCRIPTS', 'IMAGES', 'SKETCHES', 'OTHER'];
 
 // (autoPickedProjects module-scope Set deprecated 2026-05-03 — replaced by
 // state.autoPickDone owned by WorkspaceProvider. The reducer sets it on any
@@ -394,9 +387,7 @@ export function FileTree() {
         </Header>
 
         {error && (
-          <ErrorText data-testid="file-tree-error">
-            {t('fileTree.errorLoad', { error })}
-          </ErrorText>
+          <ErrorText data-testid="file-tree-error">{t('fileTree.errorLoad', { error })}</ErrorText>
         )}
 
         {!error && files.length === 0 && !loading && (

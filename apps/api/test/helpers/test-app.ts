@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import type { Env } from '../../src/index.js';
+import { assetsRoute } from '../../src/routes/assets.js';
 import { chatsRoute } from '../../src/routes/chats.js';
 import { commentsRoute } from '../../src/routes/comments.js';
 import { filesCopyRoute } from '../../src/routes/files-copy.js';
@@ -30,6 +31,7 @@ export function makeTestApp(): {
   app.route('/api/projects', chatsRoute);
   app.route('/api/projects', messagesRoute);
   app.route('/api/projects', commentsRoute);
+  app.route('/api/projects', assetsRoute);
   app.route('/api/util', utilFetchRoute);
   return {
     request: (input, init) =>

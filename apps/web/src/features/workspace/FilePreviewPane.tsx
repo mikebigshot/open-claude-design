@@ -240,7 +240,9 @@ export function FilePreviewPane({ files }: FilePreviewPaneProps) {
 
   const renderCard = () => {
     if (error)
-      return <ErrorText data-testid="file-preview-error">{t('filePane.errorLoad', { error })}</ErrorText>;
+      return (
+        <ErrorText data-testid="file-preview-error">{t('filePane.errorLoad', { error })}</ErrorText>
+      );
     if (loading) return <Empty data-testid="file-preview-loading">{t('common.loading')}</Empty>;
     if (file.mimeType === 'text/html' && content !== null) {
       return (
@@ -267,9 +269,7 @@ export function FilePreviewPane({ files }: FilePreviewPaneProps) {
       // 文件树预览只显示前 ~10 行截图视感（小卡片放不下全量）；用户要看全
       // 走 Open → FileSourceView。
       const preview = content.split('\n').slice(0, 12).join('\n');
-      return (
-        <SourcePre data-testid="file-preview-source-pre">{preview}</SourcePre>
-      );
+      return <SourcePre data-testid="file-preview-source-pre">{preview}</SourcePre>;
     }
     return <Empty>{t('filePane.noPreview')}</Empty>;
   };

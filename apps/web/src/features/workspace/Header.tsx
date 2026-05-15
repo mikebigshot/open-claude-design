@@ -282,41 +282,41 @@ export function Header({ projectName }: HeaderProps) {
         <TabBar />
         {!state.readOnly && (
           <Right>
-          <PresentWrap ref={presentWrapRef}>
-            <GhostBtn
-              type="button"
-              title={t('header.present')}
-              aria-haspopup="menu"
-              aria-expanded={presentOpen}
-              onClick={() => setPresentOpen((v) => !v)}
-            >
-              {t('header.present')} <ChevronIcon />
-            </GhostBtn>
-            {presentOpen && (
-              <PresentMenu role="menu">
-                <PresentMenuItem type="button" role="menuitem" onClick={handleFullscreen}>
-                  {t('header.presentFullScreen')}
-                  <PresentMenuSub>{t('header.presentFullScreenHint')}</PresentMenuSub>
-                </PresentMenuItem>
-                <PresentMenuItem type="button" role="menuitem" onClick={handleWithoutChrome}>
-                  {t('header.presentWithoutChrome')}
-                  <PresentMenuSub>{t('header.presentWithoutChromeHint')}</PresentMenuSub>
-                </PresentMenuItem>
-              </PresentMenu>
-            )}
-          </PresentWrap>
-          <ShareWrap ref={shareWrapRef}>
-            <ShareBtn type="button" onClick={() => setShareOpen((v) => !v)}>
-              {t('header.share')}
-            </ShareBtn>
-            {shareOpen && (
-              <SharePopover
-                projectId={state.projectId}
-                projectName={projectName}
-                onClose={() => setShareOpen(false)}
-              />
-            )}
-          </ShareWrap>
+            <PresentWrap ref={presentWrapRef}>
+              <GhostBtn
+                type="button"
+                title={t('header.present')}
+                aria-haspopup="menu"
+                aria-expanded={presentOpen}
+                onClick={() => setPresentOpen((v) => !v)}
+              >
+                {t('header.present')} <ChevronIcon />
+              </GhostBtn>
+              {presentOpen && (
+                <PresentMenu role="menu">
+                  <PresentMenuItem type="button" role="menuitem" onClick={handleFullscreen}>
+                    {t('header.presentFullScreen')}
+                    <PresentMenuSub>{t('header.presentFullScreenHint')}</PresentMenuSub>
+                  </PresentMenuItem>
+                  <PresentMenuItem type="button" role="menuitem" onClick={handleWithoutChrome}>
+                    {t('header.presentWithoutChrome')}
+                    <PresentMenuSub>{t('header.presentWithoutChromeHint')}</PresentMenuSub>
+                  </PresentMenuItem>
+                </PresentMenu>
+              )}
+            </PresentWrap>
+            <ShareWrap ref={shareWrapRef}>
+              <ShareBtn type="button" onClick={() => setShareOpen((v) => !v)}>
+                {t('header.share')}
+              </ShareBtn>
+              {shareOpen && (
+                <SharePopover
+                  projectId={state.projectId}
+                  projectName={projectName}
+                  onClose={() => setShareOpen(false)}
+                />
+              )}
+            </ShareWrap>
             <Avatar>im</Avatar>
           </Right>
         )}

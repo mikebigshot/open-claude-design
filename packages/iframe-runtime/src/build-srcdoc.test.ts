@@ -375,9 +375,9 @@ describe('isInlineableTextFile', () => {
 
   it('falls back to extension when mimeType is missing or unknown', () => {
     // Empty / unknown mime → use extension.
-    expect(
-      isInlineableTextFile({ path: 'x.png', mimeType: '' as 'text/plain', content: '' }),
-    ).toBe(false);
+    expect(isInlineableTextFile({ path: 'x.png', mimeType: '' as 'text/plain', content: '' })).toBe(
+      false,
+    );
     expect(
       isInlineableTextFile({ path: 'x.woff2', mimeType: '' as 'text/plain', content: '' }),
     ).toBe(false);
@@ -505,7 +505,9 @@ describe('REACT_GLOBALS_PRELUDE — must coexist with files that re-destructure 
       'const { useState, useEffect, useMemo, useRef } = React;\nfunction Kicker() { return useState(0); }';
     // Function constructor is parse-only (we never call it). If the prelude
     // and the snippet collide on a lexical binding, parse throws here.
-    expect(() => new Function('React', `${REACT_GLOBALS_PRELUDE}\n${reDestructureHeader}`)).not.toThrow();
+    expect(
+      () => new Function('React', `${REACT_GLOBALS_PRELUDE}\n${reDestructureHeader}`),
+    ).not.toThrow();
   });
 
   it('does not introduce any lexical const/let/var binding for hook identifiers', () => {

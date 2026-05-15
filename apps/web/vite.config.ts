@@ -47,10 +47,7 @@ export default defineConfig({
       // breaking the "edit + e2e verify" loop. `path.resolve(__dirname,
       // '../../packages/...')` walks 2 levels up from `apps/web` to the
       // current checkout's root — correct in both layouts.
-      '@open-design/iframe-runtime': path.resolve(
-        __dirname,
-        '../../packages/iframe-runtime/src',
-      ),
+      '@open-design/iframe-runtime': path.resolve(__dirname, '../../packages/iframe-runtime/src'),
       '@open-design/contracts': path.resolve(__dirname, '../../packages/contracts/src'),
       // Spike test deps — resolved from main workspace when worktree has no node_modules
       ai: worktreeNodeModules('ai'),

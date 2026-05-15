@@ -246,6 +246,33 @@ describe('ChatPanel', () => {
     expect((screen.getByLabelText('Chat composer') as HTMLTextAreaElement).value).toBe('');
   });
 
+  it('Composer onSubmit with skill attachments forwards them via sendMessage({text, attachments})', () => {
+    renderPanel();
+    // Open Add context → Attach skill → Pick Make a deck
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    const attachSkillItem = screen
+      .getAllByRole('menuitem')
+      .find((i) => i.textContent?.includes('Attach skill'))!;
+    act(() => fireEvent.click(attachSkillItem));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Make a deck/i })));
+    // Type some text + Send
+    const textarea = screen.getByLabelText('Chat composer') as HTMLTextAreaElement;
+    act(() => fireEvent.change(textarea, { target: { value: 'pitch deck please' } }));
+    act(() => fireEvent.click(screen.getByLabelText('Send')));
+
+    expect(fakeAgent.sendMessage).toHaveBeenCalledTimes(1);
+    const arg = fakeAgent.sendMessage.mock.calls[0]![0];
+    expect(arg.text).toBe('pitch deck please');
+    expect(arg.attachments).toBeDefined();
+    expect(arg.attachments).toHaveLength(1);
+    expect(arg.attachments[0]).toMatchObject({
+      name: 'Make a deck',
+      type: 'skill',
+    });
+    expect(typeof arg.attachments[0].content).toBe('string');
+    expect(arg.attachments[0].content.length).toBeGreaterThan(10);
+  });
+
   it('Composer onSubmit without key opens ApiKeyModal and stashes pendingMessage', () => {
     fakeAgent.hasKey = false;
     renderPanel();
@@ -625,5 +652,129 @@ describe('ChatPanel', () => {
 
     expect(workspaceRef.current!.state.activeTab).toBe('Counter.jsx');
     expect(workspaceRef.current!.state.selectedPinId).toBe('pin-x');
+  });
+
+  // ───── F1.1 — questions_v2 form ↔ chat.sendMessage wiring ─────
+  describe('questions_v2 form wiring', () => {
+    it('renders <QuestionsForm> when a message has a tool-questions_v2 part', () => {
+      fakeAgent.messages = [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-questions_v2',
+              state: 'output-available',
+              input: {
+                title: 'Quick questions about the landing page',
+                questions: [
+                  {
+                    id: 'audience',
+                    kind: 'text-options',
+                    title: 'Who is this for?',
+                    options: ['Designers', 'PMs'],
+                  },
+                ],
+              },
+              toolCallId: 'tcid-q1',
+            },
+          ],
+        },
+      ];
+      renderPanel();
+      expect(screen.getByText('Quick questions about the landing page')).toBeInTheDocument();
+      // Submit + Cancel buttons mean the form mounted (not the verb chip).
+      expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    it('submits answers via chat.sendMessage with JSON-formatted text', () => {
+      fakeAgent.messages = [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-questions_v2',
+              state: 'output-available',
+              input: {
+                title: 'X',
+                questions: [
+                  {
+                    id: 'audience',
+                    kind: 'text-options',
+                    title: 'Who?',
+                    options: ['Designers', 'PMs'],
+                  },
+                ],
+              },
+              toolCallId: 'tcid-q2',
+            },
+          ],
+        },
+      ];
+      renderPanel();
+      const radio = screen.getAllByRole('radio')[0] as HTMLInputElement;
+      act(() => fireEvent.click(radio));
+      act(() => fireEvent.click(screen.getByRole('button', { name: /submit/i })));
+      expect(fakeAgent.sendMessage).toHaveBeenCalledTimes(1);
+      const arg = fakeAgent.sendMessage.mock.calls[0]![0] as { text: string };
+      expect(arg.text).toContain('"audience"');
+      expect(arg.text).toContain('"Designers"');
+    });
+
+    it('cancel sends the "Skipped all questions" hint and unmounts the form', () => {
+      fakeAgent.messages = [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-questions_v2',
+              state: 'output-available',
+              input: { title: 'X', questions: [] },
+              toolCallId: 'tcid-q3',
+            },
+          ],
+        },
+      ];
+      renderPanel();
+      act(() => fireEvent.click(screen.getByRole('button', { name: /cancel/i })));
+      expect(fakeAgent.sendMessage).toHaveBeenCalledTimes(1);
+      const arg = fakeAgent.sendMessage.mock.calls[0]![0] as { text: string };
+      expect(arg.text).toMatch(/skipped|proceed/i);
+      // The form should disappear after cancel — title gone, no buttons left.
+      expect(screen.queryByRole('button', { name: /submit/i })).toBeNull();
+    });
+
+    it('submit unmounts the form (handledToolCallIds gates re-render)', () => {
+      fakeAgent.messages = [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-questions_v2',
+              state: 'output-available',
+              input: {
+                title: 'My form',
+                questions: [{ id: 'notes', kind: 'freeform', title: 'Anything?' }],
+              },
+              toolCallId: 'tcid-q4',
+            },
+          ],
+        },
+      ];
+      renderPanel();
+      // The Composer also has a textarea (chat input); use the one whose
+      // aria-label matches the question's title to target the form textarea
+      // specifically.
+      const textarea = screen.getByRole('textbox', { name: 'Anything?' }) as HTMLTextAreaElement;
+      act(() => fireEvent.change(textarea, { target: { value: 'no thanks' } }));
+      act(() => fireEvent.click(screen.getByRole('button', { name: /submit/i })));
+      // Form is hidden after submit
+      expect(screen.queryByText('My form')).toBeNull();
+      expect(screen.queryByRole('button', { name: /submit/i })).toBeNull();
+    });
   });
 });

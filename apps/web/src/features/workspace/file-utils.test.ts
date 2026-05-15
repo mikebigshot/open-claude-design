@@ -63,14 +63,9 @@ describe('pickEntry', () => {
 
   it('"<Name> Prototype.html" wrapper (zip-export产物) is picked over sibling jsx files', () => {
     // 实际场景: import zip 后，pickEntry 应自动选 '<Project Name> Prototype.html'
-    expect(
-      pickEntry([
-        'app.jsx',
-        'data.jsx',
-        'screen-test.jsx',
-        'Demo Prototype.html',
-      ]),
-    ).toBe('Demo Prototype.html');
+    expect(pickEntry(['app.jsx', 'data.jsx', 'screen-test.jsx', 'Demo Prototype.html'])).toBe(
+      'Demo Prototype.html',
+    );
   });
 });
 

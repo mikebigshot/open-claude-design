@@ -30,6 +30,13 @@ interface Props {
    * 拼进 sendMessage({ files }) 让模型 visually 看到图。
    */
   onAttachmentAdd: (attachment: PendingAttachment) => void;
+  /**
+   * Triggered when the user picks the "Attach skill" entry. Composer opens
+   * the SkillPicker submenu in response. Wired separately from
+   * `onAttachmentAdd` because skill attachments carry a different shape
+   * (Attachment v2 — id/name/type/content) and don't go through R2 upload.
+   */
+  onAttachSkillRequested: () => void;
 }
 
 interface OptionDef {
@@ -40,6 +47,12 @@ interface OptionDef {
 }
 
 const OPTIONS: OptionDef[] = [
+  {
+    id: 'attachSkill',
+    labelKey: 'import.option.attachSkill',
+    icon: <IconSparkle />,
+    enabled: true,
+  },
   {
     id: 'codebase',
     labelKey: 'import.option.localCodebase',
@@ -121,6 +134,7 @@ export function ImportPopover({
   projectId,
   onClose,
   onAttachmentAdd,
+  onAttachSkillRequested,
 }: Props) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
@@ -197,6 +211,13 @@ export function ImportPopover({
           onClick={() => {
             if (!opt.enabled) return;
             if (opt.id === 'upload') triggerFilePicker();
+            if (opt.id === 'attachSkill') {
+              // Hand off to Composer — it opens the SkillPicker submenu and
+              // tears this popover down. We don't call onClose here because
+              // Composer manages both menus' visibility (the popover stays
+              // hidden behind the skill submenu).
+              onAttachSkillRequested();
+            }
           }}
           title={opt.enabled ? undefined : t('import.comingSoon')}
           role="menuitem"

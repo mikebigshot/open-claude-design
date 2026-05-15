@@ -21,12 +21,9 @@ const REACT_VERSION = '18.3.1';
 const REACT_DOM_VERSION = '18.3.1';
 const BABEL_VERSION = '7.29.0';
 
-const SRI_REACT =
-  'sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L';
-const SRI_REACT_DOM =
-  'sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm';
-const SRI_BABEL =
-  'sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y';
+const SRI_REACT = 'sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L';
+const SRI_REACT_DOM = 'sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm';
+const SRI_BABEL = 'sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y';
 
 export interface StandaloneHtmlOptions {
   /** 显示在 `<title>` 里。默认 = projectName */
@@ -49,10 +46,7 @@ function escapeAttr(value: string): string {
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function isJsxLikePath(path: string): boolean {

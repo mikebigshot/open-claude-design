@@ -477,24 +477,22 @@ export function PreviewPanel() {
     const pendingStyles = pendingEditsRef.current;
     if (pendingStyles.size > 0) {
       pendingEditsRef.current = new Map();
-      void persistEditStyles(projectId, fileSnapshot, pendingStyles).then(
-        ({ written, missed }) => {
-          if (missed > 0) {
-            console.warn(
-              `[edit] ${missed} style edit(s) couldn't be saved (snippet not found in source)`,
-            );
-            showToast({
-              id: 'edit-persist-missed',
-              variant: 'error',
-              message:
-                missed === 1
-                  ? "Couldn't save 1 style edit — the source isn't a literal JSX tag we can rewrite. Change is visible in the preview but not saved."
-                  : `Couldn't save ${missed} style edits — the source isn't literal JSX we can rewrite. Changes are visible in the preview but not saved.`,
-            });
-          }
-          if (written > 0) dispatch({ type: 'files_changed' });
-        },
-      );
+      void persistEditStyles(projectId, fileSnapshot, pendingStyles).then(({ written, missed }) => {
+        if (missed > 0) {
+          console.warn(
+            `[edit] ${missed} style edit(s) couldn't be saved (snippet not found in source)`,
+          );
+          showToast({
+            id: 'edit-persist-missed',
+            variant: 'error',
+            message:
+              missed === 1
+                ? "Couldn't save 1 style edit — the source isn't a literal JSX tag we can rewrite. Change is visible in the preview but not saved."
+                : `Couldn't save ${missed} style edits — the source isn't literal JSX we can rewrite. Changes are visible in the preview but not saved.`,
+          });
+        }
+        if (written > 0) dispatch({ type: 'files_changed' });
+      });
     }
 
     const pendingClasses = pendingClassEditsRef.current;
@@ -805,14 +803,10 @@ export function PreviewPanel() {
       ) : null}
 
       {showEmptyToolHint ? (
-        <ModeHint data-testid="preview-empty-tool-hint">
-          {t('preview.toolNeedsPreview')}
-        </ModeHint>
+        <ModeHint data-testid="preview-empty-tool-hint">{t('preview.toolNeedsPreview')}</ModeHint>
       ) : null}
 
-      {showTweaksHint ? (
-        <ModeHint>{t('preview.tweaksUnavailable')}</ModeHint>
-      ) : null}
+      {showTweaksHint ? <ModeHint>{t('preview.tweaksUnavailable')}</ModeHint> : null}
 
       {showEditFloat ? (
         <FloatSlot>

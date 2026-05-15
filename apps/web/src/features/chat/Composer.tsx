@@ -16,7 +16,9 @@ import type { PendingAttachment } from '@/state/types';
 import { IconArrowUp, IconMic, IconPaperclip, IconPlus } from './icons';
 import { ImportPopover } from './ImportPopover';
 import { loadStoredModel, ModelDropdown } from './ModelDropdown';
+import { SkillPicker } from './SkillPicker';
 import type { ChipPrim } from './types';
+import type { Attachment } from './ui-messages';
 
 // Map IANA mime → file extension. Covers the common image types a paste
 // would ever produce on macOS / Windows / Linux clipboards. Defaults to
@@ -50,11 +52,20 @@ export interface ComposerProps {
   onChange: (value: string) => void;
   /**
    * Called when user submits (Send button or cmd+Enter).
-   * Receives the local attachments accumulated via Cmd+V paste so the caller
-   * can forward them as Vercel AI SDK FileUIParts. Composer clears its own
-   * attachment state immediately after invoking onSubmit.
+   *
+   * Two payloads, separated because they live in different downstream paths:
+   *   1. `attachments` — paste / upload images that the caller forwards as
+   *      Vercel AI SDK FileUIParts so the model "sees" the picture visually.
+   *   2. `skillAttachments` — v2 skill-attach Attachment[] (id / name / type
+   *      / content). The caller forwards these via `sendMessage({attachments})`
+   *      so use-agent-chat's wrapper can inline them as `<skill-attachment>`
+   *      XML wrappers in the outgoing user text AND tack them onto the
+   *      persisted DesignAgentUIMessage so ChatMsg can render the chip on
+   *      reload.
+   *
+   * Composer clears both attachment lists immediately after invoking onSubmit.
    */
-  onSubmit: (attachments: PendingAttachment[]) => void;
+  onSubmit: (attachments: PendingAttachment[], skillAttachments: Attachment[]) => void;
   /** Called when user presses Stop during streaming. */
   onStop?: () => void;
   /** Whether the agent is currently streaming (disables Send, shows Stop). */
@@ -119,6 +130,30 @@ const ChipClose = styled.span`
   &:hover {
     opacity: 1;
   }
+`;
+
+// Skill-attach chip. Distinct from the input ChipPrim row above and the
+// image AttachmentChip below — uses the brand-tinted style with a "skill:"
+// prefix kind label so it reads consistently with ChatMsg's persisted chip
+// rendering. × removes one entry from the local skillAttachments state.
+const SkillAttachChip = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: ${(p) => p.theme.colors.brandTint};
+  border: 1px solid ${(p) => p.theme.colors.brandSoft};
+  color: ${(p) => p.theme.colors.brandPress};
+  font-family: inherit;
+  line-height: 1.5;
+`;
+
+const SkillAttachKind = styled.span`
+  color: ${(p) => p.theme.colors.fg400};
+  font-weight: 500;
+  margin-right: 2px;
 `;
 
 // Paste-image preview chip. Sits in its own row above the text area so a few
@@ -257,12 +292,21 @@ export function Composer({
 }: ComposerProps) {
   const t = useT();
   const [importOpen, setImportOpen] = useState(false);
+  // Skill picker submenu visibility — opened when the user clicks "Attach
+  // skill" inside the Add-context popover. The two popovers are mutually
+  // exclusive: opening the picker closes the import popover.
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
 
   // Attachments accumulated from Cmd+V paste in the textarea. We keep this
   // state local (caller doesn't need to drive paste) and hand it to onSubmit
   // at send time so ChatPanel can map → Vercel AI SDK FileUIParts. We clear
   // immediately on submit — stale attachments must not leak to the next msg.
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+
+  // v2 skill attachments — populated when the user picks a skill from the
+  // submenu. Renders as a "[skill: <name> ×]" chip above the textarea and
+  // flows to onSubmit at send time. Clears alongside `attachments` on submit.
+  const [skillAttachments, setSkillAttachments] = useState<Attachment[]>([]);
 
   const removeChip = useCallback(
     (id: string) => {
@@ -336,9 +380,14 @@ export function Composer({
   const sendDisabled = trimmed.length === 0 || !!streaming;
 
   const handleSubmit = useCallback(() => {
-    onSubmit(attachments);
+    onSubmit(attachments, skillAttachments);
     setAttachments([]);
-  }, [attachments, onSubmit]);
+    setSkillAttachments([]);
+  }, [attachments, skillAttachments, onSubmit]);
+
+  const removeSkillAttachment = useCallback((id: string) => {
+    setSkillAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   return (
     <Wrap>
@@ -379,7 +428,45 @@ export function Composer({
           setAttachments((prev) => [...prev, a]);
           setImportOpen(false);
         }}
+        onAttachSkillRequested={() => {
+          setImportOpen(false);
+          setSkillPickerOpen(true);
+        }}
       />
+
+      <SkillPicker
+        open={skillPickerOpen}
+        onClose={() => setSkillPickerOpen(false)}
+        onPick={(att) => {
+          setSkillAttachments((prev) => [...prev, att]);
+          setSkillPickerOpen(false);
+        }}
+      />
+
+      {skillAttachments.length > 0 && (
+        <ChipRow>
+          {skillAttachments.map((a) => (
+            <SkillAttachChip key={a.id} data-testid={`skill-chip-${a.name}`}>
+              <SkillAttachKind>{t('skillChip.kindLabel')}:</SkillAttachKind>
+              {a.name}
+              <ChipClose
+                onClick={() => removeSkillAttachment(a.id)}
+                aria-label={t('skillChip.removeAria', { name: a.name })}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    removeSkillAttachment(a.id);
+                  }
+                }}
+              >
+                ×
+              </ChipClose>
+            </SkillAttachChip>
+          ))}
+        </ChipRow>
+      )}
 
       {attachments.length > 0 && (
         <ChipRow>
@@ -388,9 +475,7 @@ export function Composer({
               <img src={a.url} alt={a.filename ?? 'pasted'} />
               <AttachmentClose
                 type="button"
-                onClick={() =>
-                  setAttachments((prev) => prev.filter((_, j) => j !== i))
-                }
+                onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
                 aria-label={`Remove ${a.filename ?? 'attachment'}`}
               >
                 ×

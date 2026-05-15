@@ -26,6 +26,7 @@ import { ChatMsg } from './ChatMsg';
 import { CommentsTab, aggregateSelectedPins } from './CommentsTab';
 import { Composer } from './Composer';
 import { IconLogo, IconSparkle } from './icons';
+import type { Attachment } from './ui-messages';
 import { useAgentChat } from './use-agent-chat';
 
 // ───── styled components ─────
@@ -89,6 +90,23 @@ export interface ChatPanelProps {
   designSystemId?: string;
   designSystemName?: string;
   designSystemTokensCss?: string;
+}
+
+// ───── helpers ─────
+
+/**
+ * Convert a workspace-local PendingAttachment (mediaType / url / filename)
+ * into the Vercel AI SDK FileUIPart shape that sendMessage({files}) expects.
+ * Centralized so both `submit` (Composer-driven sends) and the
+ * pendingChatSubmit drain (PreviewPanel-driven sends) emit the same shape.
+ */
+function toFileUIPart(a: PendingAttachment) {
+  return {
+    type: 'file' as const,
+    mediaType: a.mediaType,
+    url: a.url,
+    ...(a.filename ? { filename: a.filename } : {}),
+  };
 }
 
 // ───── component ─────
@@ -245,6 +263,24 @@ export function ChatPanel({
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
+  // F1.1 — questions_v2 form handled-ids. Once the user submits or cancels a
+  // questions_v2 form, we add its toolCallId here so ChatMsg unmounts the
+  // form on subsequent renders (otherwise the form keeps showing under the
+  // assistant message and the user could re-submit). Lives in component
+  // state (not a ref) so the re-render triggers; lives in `Set` so add()
+  // gives us a new identity that lets React reconcile properly.
+  const [handledToolCallIds, setHandledToolCallIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const markHandled = useCallback((toolCallId: string) => {
+    setHandledToolCallIds((prev) => {
+      if (prev.has(toolCallId)) return prev;
+      const next = new Set(prev);
+      next.add(toolCallId);
+      return next;
+    });
+  }, []);
+
   // Drain workspace.composerSeed → Composer input. Set by ExamplesTab "Use
   // this prompt" path (Workspace mount effect reads sessionStorage and calls
   // setComposerSeed). NEVER auto-sent — user reviews and submits manually
@@ -310,6 +346,27 @@ export function ChatPanel({
     }
   }, [hasKey, pendingMessage, sendMessageWithMaterialize]);
 
+  // F1.1 — questions_v2 form callbacks. Submit ships the formatted JSON
+  // answers as the next user message; Cancel ships a "Skipped all questions"
+  // hint so the agent knows to proceed on its own. Either way we mark the
+  // toolCallId handled so ChatMsg can hide the form on re-render.
+  const handleSubmitQuestions = useCallback(
+    (toolCallId: string, text: string) => {
+      markHandled(toolCallId);
+      void sendMessageWithMaterialize({ text });
+    },
+    [markHandled, sendMessageWithMaterialize],
+  );
+  const handleCancelQuestions = useCallback(
+    (toolCallId: string) => {
+      markHandled(toolCallId);
+      void sendMessageWithMaterialize({
+        text: 'Skipped all questions — proceed with your best judgment.',
+      });
+    },
+    [markHandled, sendMessageWithMaterialize],
+  );
+
   // Drain queued submissions from PreviewPanel (Draw screenshot, Pin "Send to Atelier").
   // Convert PendingAttachment → FileUIPart at the boundary so workspace state stays
   // free of `ai` package types. If no key yet, stash text in pendingMessage so the
@@ -325,12 +382,7 @@ export function ChatPanel({
       return;
     }
     if (submit.attachments && submit.attachments.length > 0) {
-      const files = submit.attachments.map((a) => ({
-        type: 'file' as const,
-        mediaType: a.mediaType,
-        url: a.url,
-        ...(a.filename ? { filename: a.filename } : {}),
-      }));
+      const files = submit.attachments.map(toFileUIPart);
       void sendMessageWithMaterialize({ text: submit.text, files });
     } else {
       void sendMessageWithMaterialize({ text: submit.text });
@@ -338,7 +390,11 @@ export function ChatPanel({
     actions.queueChatSubmit(null);
   }, [workspaceState.pendingChatSubmit, hasKey, sendMessageWithMaterialize, actions]);
 
-  const submit = (text: string, attachments: PendingAttachment[] = []) => {
+  const submit = (
+    text: string,
+    attachments: PendingAttachment[] = [],
+    skillAttachments: Attachment[] = [],
+  ) => {
     if (!text.trim()) return;
     if (!hasKey) {
       // BYOK gate path doesn't carry attachments through KeyModal — they'd be
@@ -349,17 +405,23 @@ export function ChatPanel({
       setShowKeyModal(true);
       return;
     }
+    // Build the sendMessage args. `files` flows through the AI SDK as
+    // FileUIParts (paste/upload thumbnails). `attachments` is our custom
+    // extension consumed by use-agent-chat's wrapped sendMessage — it inlines
+    // their content as <skill-attachment> XML wrappers AND tacks them onto
+    // the persisted user message so ChatMsg can render the chip on reload.
+    const payload: {
+      text: string;
+      files?: ReturnType<typeof toFileUIPart>[];
+      attachments?: Attachment[];
+    } = { text };
     if (attachments.length > 0) {
-      const files = attachments.map((a) => ({
-        type: 'file' as const,
-        mediaType: a.mediaType,
-        url: a.url,
-        ...(a.filename ? { filename: a.filename } : {}),
-      }));
-      void sendMessageWithMaterialize({ text, files });
-    } else {
-      void sendMessageWithMaterialize({ text });
+      payload.files = attachments.map(toFileUIPart);
     }
+    if (skillAttachments.length > 0) {
+      payload.attachments = skillAttachments;
+    }
+    void sendMessageWithMaterialize(payload);
     setInput('');
   };
 
@@ -401,7 +463,12 @@ export function ChatPanel({
             <>
               {messages.map((msg, idx) => (
                 <div key={msg.id} data-testid={`chat-msg-${msg.role}-${idx}`} data-msg-id={msg.id}>
-                  <ChatMsg message={msg} />
+                  <ChatMsg
+                    message={msg}
+                    onSubmitQuestions={handleSubmitQuestions}
+                    onCancelQuestions={handleCancelQuestions}
+                    handledToolCallIds={handledToolCallIds}
+                  />
                 </div>
               ))}
               {isStreaming && (
@@ -463,7 +530,7 @@ export function ChatPanel({
           projectId={projectId}
           value={input}
           onChange={setInput}
-          onSubmit={(attachments) => submit(input, attachments)}
+          onSubmit={(attachments, skillAttachments) => submit(input, attachments, skillAttachments)}
           onStop={stop}
           streaming={isStreaming}
           onModelChange={handleModelChange}

@@ -151,7 +151,7 @@ describe('FileTree split layout', () => {
     renderTree();
     await waitFor(() => {
       const ws = getWorkspace();
-      expect(ws.state.previewingFile).toBe("index.html");
+      expect(ws.state.previewingFile).toBe('index.html');
     });
   });
 
@@ -243,7 +243,7 @@ describe('FileTree — a11y (WAI-ARIA Tree pattern)', () => {
     renderTree();
     await waitFor(() => screen.getByText('helpers.js'));
     await waitFor(() => {
-      expect(getWorkspace().state.previewingFile).toBe("index.html");
+      expect(getWorkspace().state.previewingFile).toBe('index.html');
     });
     const items = getTreeItems();
     const first = items[0]!;
@@ -258,7 +258,7 @@ describe('FileTree — a11y (WAI-ARIA Tree pattern)', () => {
     renderTree();
     await waitFor(() => screen.getByText('helpers.js'));
     await waitFor(() => {
-      expect(getWorkspace().state.previewingFile).toBe("index.html");
+      expect(getWorkspace().state.previewingFile).toBe('index.html');
     });
     const items = getTreeItems();
     const second = items[1]!;
@@ -271,7 +271,7 @@ describe('FileTree — a11y (WAI-ARIA Tree pattern)', () => {
     renderTree();
     await waitFor(() => screen.getByText('helpers.js'));
     await waitFor(() => {
-      expect(getWorkspace().state.previewingFile).toBe("index.html");
+      expect(getWorkspace().state.previewingFile).toBe('index.html');
     });
     const items = getTreeItems();
     const middle = items[1]!;
@@ -288,7 +288,7 @@ describe('FileTree — a11y (WAI-ARIA Tree pattern)', () => {
     renderTree();
     await waitFor(() => screen.getByText('helpers.js'));
     await waitFor(() => {
-      expect(getWorkspace().state.previewingFile).toBe("index.html");
+      expect(getWorkspace().state.previewingFile).toBe('index.html');
     });
     const items = getTreeItems();
     const helpersJs = items.find((el) => (el.textContent ?? '').includes('helpers.js'))!;
@@ -304,7 +304,7 @@ describe('FileTree — a11y (WAI-ARIA Tree pattern)', () => {
     renderTree();
     await waitFor(() => screen.getByText('helpers.js'));
     await waitFor(() => {
-      expect(getWorkspace().state.previewingFile).toBe("index.html");
+      expect(getWorkspace().state.previewingFile).toBe('index.html');
     });
     const items = getTreeItems();
     const last = items[items.length - 1]!;

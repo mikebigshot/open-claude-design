@@ -5,28 +5,9 @@
 // Coverage policy: UN 6 official languages (en / zh / es / fr / ru / ar) +
 // CJK rounded out with ja / ko. Chinese kept as both zh-CN and zh-TW so
 // Mainland and Greater China users get the right written form. Total 9.
-export type Locale =
-  | 'en'
-  | 'zh-CN'
-  | 'zh-TW'
-  | 'es-ES'
-  | 'fr'
-  | 'ru'
-  | 'ar'
-  | 'ja'
-  | 'ko';
+export type Locale = 'en' | 'zh-CN' | 'zh-TW' | 'es-ES' | 'fr' | 'ru' | 'ar' | 'ja' | 'ko';
 
-export const LOCALES: Locale[] = [
-  'en',
-  'zh-CN',
-  'zh-TW',
-  'es-ES',
-  'fr',
-  'ru',
-  'ar',
-  'ja',
-  'ko',
-];
+export const LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'es-ES', 'fr', 'ru', 'ar', 'ja', 'ko'];
 
 export const LOCALE_LABEL: Record<Locale, string> = {
   en: 'English',
@@ -307,11 +288,31 @@ export interface Dict {
   'chat.thinking': string;
   'chat.verifierChecking': string;
 
-  // ChatMsg tool labels
+  // ChatMsg tool labels — verb chip for each agent tool. Keep these short
+  // (≤10 chars in en) so they fit the fixed-width verb column in the chat
+  // history. Mirrors the v1 verb-map (Reading/Writing/Editing/Copying/Done)
+  // and adds the v2 tool set. Falls back to a lowercased-with-spaces version
+  // of the type name for any tool without an explicit case.
   'chat.tool.writing': string;
   'chat.tool.reading': string;
+  'chat.tool.editing': string;
   'chat.tool.listing': string;
+  'chat.tool.copying': string;
+  'chat.tool.deleting': string;
+  'chat.tool.viewing': string;
+  'chat.tool.fetching': string;
+  'chat.tool.grep': string;
   'chat.tool.done': string;
+  'chat.tool.snipping': string;
+  'chat.tool.todos': string;
+  'chat.tool.registering': string;
+  'chat.tool.skill': string;
+  'chat.tool.verifying': string;
+  'chat.tool.feedback': string;
+  'chat.tool.questioning': string;
+  'chat.tool.screenshotting': string;
+  'chat.tool.evaluating': string;
+  'chat.tool.logs': string;
 
   // CommentsTab
   'comments.errorLoad': string;
@@ -337,8 +338,17 @@ export interface Dict {
   'import.option.figma': string;
   'import.option.uploadScreenshots': string;
   'import.option.designSystems': string;
+  'import.option.attachSkill': string;
   'import.soonBadge': string;
   'import.comingSoon': string;
+
+  // SkillPicker submenu (chat input "Attach skill" → list of skills)
+  'skillPicker.menuAria': string;
+  'skillPicker.empty': string;
+
+  // Skill attachment chip (above the textarea, post-pick)
+  'skillChip.kindLabel': string;
+  'skillChip.removeAria': string;
 
   // ModelDropdown (in the composer)
   'modelDropdown.noKey': string;

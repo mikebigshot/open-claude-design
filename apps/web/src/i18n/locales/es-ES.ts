@@ -106,8 +106,7 @@ export const esES: Dict = {
   'header.settings': 'Ajustes',
 
   'workspace.chatToolsAria': 'Pestañas de chat y herramientas',
-  'workspace.dropFilesHint':
-    '↓ SUELTA ARCHIVOS AQUÍ — Atelier los usará como contexto',
+  'workspace.dropFilesHint': '↓ SUELTA ARCHIVOS AQUÍ — Atelier los usará como contexto',
   'workspace.errorMissingId': 'Falta el id del proyecto.',
   'workspace.errorNotFoundTitle': 'Proyecto no encontrado',
   'workspace.errorNotFoundLine1': 'No pudimos encontrar un proyecto con id {id}.',
@@ -158,7 +157,8 @@ export const esES: Dict = {
   'fileTree.title': 'Archivos de diseño',
   'fileTree.todosLabel': 'Tareas',
   'fileTree.empty': 'El proyecto aún no tiene archivos.',
-  'fileTree.emptyHint': 'Haz clic en + para iniciar un nuevo chat y pedir a Atelier que cree archivos.',
+  'fileTree.emptyHint':
+    'Haz clic en + para iniciar un nuevo chat y pedir a Atelier que cree archivos.',
   'fileTree.errorLoad': 'No se pudieron cargar los archivos: {error}',
   'fileTree.newFile': 'Nuevo archivo',
   'fileTree.newFolder': 'Nueva carpeta',
@@ -191,7 +191,8 @@ export const esES: Dict = {
   'preview.errorLoadFiles': 'No se pudieron cargar los archivos: {error}',
   'preview.emptyTitle': 'Empieza a chatear para generar tu primera vista previa.',
   'preview.emptySub': 'La salida de Atelier se renderizará aquí.',
-  'preview.commentHint': 'Haz clic en cualquier punto de la vista previa para soltar un pin de comentario',
+  'preview.commentHint':
+    'Haz clic en cualquier punto de la vista previa para soltar un pin de comentario',
   'preview.toolNeedsPreview': 'Genera primero una vista previa para usar esta herramienta',
   'preview.tweaksUnavailable':
     'Este artifact no expone Tweaks — pídele a Atelier que añada parámetros ajustables',
@@ -238,8 +239,24 @@ export const esES: Dict = {
 
   'chat.tool.writing': 'ESCRIBIENDO',
   'chat.tool.reading': 'LEYENDO',
+  'chat.tool.editing': 'EDITANDO',
   'chat.tool.listing': 'LISTANDO',
+  'chat.tool.copying': 'COPIANDO',
+  'chat.tool.deleting': 'BORRANDO',
+  'chat.tool.viewing': 'VIENDO',
+  'chat.tool.fetching': 'OBTENIENDO',
+  'chat.tool.grep': 'BUSCAR',
   'chat.tool.done': 'HECHO',
+  'chat.tool.snipping': 'RECORTAR',
+  'chat.tool.todos': 'TAREAS',
+  'chat.tool.registering': 'RECURSOS',
+  'chat.tool.skill': 'SKILL',
+  'chat.tool.verifying': 'VERIFICAR',
+  'chat.tool.feedback': 'FEEDBACK',
+  'chat.tool.questioning': 'PREGUNTAR',
+  'chat.tool.screenshotting': 'CAPTURA',
+  'chat.tool.evaluating': 'EVAL',
+  'chat.tool.logs': 'LOGS',
 
   'comments.errorLoad':
     'No se pudieron cargar los comentarios: {error}. Recarga la página para reintentar.',
@@ -267,8 +284,15 @@ export const esES: Dict = {
   'import.option.figma': 'Archivo Figma',
   'import.option.uploadScreenshots': 'Subir capturas',
   'import.option.designSystems': 'Explorar sistemas de diseño',
+  'import.option.attachSkill': 'Adjuntar habilidad',
   'import.soonBadge': 'PRONTO',
   'import.comingSoon': 'Próximamente',
+
+  'skillPicker.menuAria': 'Selector de habilidades',
+  'skillPicker.empty': 'No hay habilidades disponibles',
+
+  'skillChip.kindLabel': 'habilidad',
+  'skillChip.removeAria': 'Quitar {name}',
 
   'modelDropdown.noKey': 'sin clave',
   'modelDropdown.addKeyFirst': 'Primero añade una clave de {provider}',

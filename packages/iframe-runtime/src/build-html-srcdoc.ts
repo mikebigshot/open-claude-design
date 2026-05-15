@@ -88,10 +88,7 @@ export function buildHtmlSrcdoc(htmlContent: string, options: BuildHtmlSrcdocOpt
   // 找第一个 type="text/babel" script 把 prelude 插到它前面；如果没有 jsx
   // script（极简 HTML），插到 </head> 前。
   if (/<script[^>]+type=["']text\/babel["']/i.test(html)) {
-    html = html.replace(
-      /(<script[^>]+type=["']text\/babel["'][^>]*>)/i,
-      `${preludeTag}\n$1`,
-    );
+    html = html.replace(/(<script[^>]+type=["']text\/babel["'][^>]*>)/i, `${preludeTag}\n$1`);
   } else if (/<\/head>/i.test(html)) {
     html = html.replace(/<\/head>/i, `${preludeTag}\n</head>`);
   }

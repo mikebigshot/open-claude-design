@@ -192,7 +192,8 @@ export const ko: Dict = {
   'preview.emptySub': 'Atelier의 출력이 여기에 표시됩니다.',
   'preview.commentHint': '프리뷰의 아무 곳이나 클릭해 코멘트 핀을 놓으세요',
   'preview.toolNeedsPreview': '이 도구를 사용하려면 먼저 프리뷰를 생성하세요',
-  'preview.tweaksUnavailable': '이 artifact는 Tweaks를 노출하지 않음 — Atelier에게 조정 가능한 파라미터 추가를 요청하세요',
+  'preview.tweaksUnavailable':
+    '이 artifact는 Tweaks를 노출하지 않음 — Atelier에게 조정 가능한 파라미터 추가를 요청하세요',
 
   'commentPin.empty': '(빈 핀)',
   'commentPin.jumpTitle': '클릭하여 이 핀으로 이동',
@@ -236,13 +237,29 @@ export const ko: Dict = {
 
   'chat.tool.writing': '쓰는 중',
   'chat.tool.reading': '읽는 중',
+  'chat.tool.editing': '편집 중',
   'chat.tool.listing': '목록 중',
+  'chat.tool.copying': '복사 중',
+  'chat.tool.deleting': '삭제 중',
+  'chat.tool.viewing': '보는 중',
+  'chat.tool.fetching': '가져오는 중',
+  'chat.tool.grep': '검색',
   'chat.tool.done': '완료',
+  'chat.tool.snipping': '잘라내기',
+  'chat.tool.todos': '할 일',
+  'chat.tool.registering': '자산',
+  'chat.tool.skill': '스킬',
+  'chat.tool.verifying': '검증',
+  'chat.tool.feedback': '피드백',
+  'chat.tool.questioning': '질문',
+  'chat.tool.screenshotting': '스샷',
+  'chat.tool.evaluating': '실행',
+  'chat.tool.logs': '로그',
 
   'comments.errorLoad': '코멘트를 불러올 수 없음: {error}. 페이지를 새로고침하여 다시 시도하세요.',
-  'comments.errorPartial': '모든 코멘트를 다시 불러올 수 없음: {error}. 아래 목록이 불완전할 수 있습니다.',
-  'comments.errorReload':
-    '지금 만드는 새 핀은 저장되지만, 이전 핀(있다면)은 가져올 수 없습니다.',
+  'comments.errorPartial':
+    '모든 코멘트를 다시 불러올 수 없음: {error}. 아래 목록이 불완전할 수 있습니다.',
+  'comments.errorReload': '지금 만드는 새 핀은 저장되지만, 이전 핀(있다면)은 가져올 수 없습니다.',
   'comments.empty.intro': '아직 코멘트가 없습니다. 도구 모음의 ',
   'comments.empty.toolName': '코멘트',
   'comments.empty.instruction': ' 도구를 클릭한 다음, 프리뷰의 아무 곳이나 클릭해 핀을 놓으세요.',
@@ -262,8 +279,15 @@ export const ko: Dict = {
   'import.option.figma': 'Figma 파일',
   'import.option.uploadScreenshots': '스크린샷 업로드',
   'import.option.designSystems': '디자인 시스템 둘러보기',
+  'import.option.attachSkill': '스킬 첨부',
   'import.soonBadge': '곧',
   'import.comingSoon': '곧 출시',
+
+  'skillPicker.menuAria': '스킬 선택기',
+  'skillPicker.empty': '사용 가능한 스킬이 없습니다',
+
+  'skillChip.kindLabel': '스킬',
+  'skillChip.removeAria': '{name} 제거',
 
   'modelDropdown.noKey': '키 없음',
   'modelDropdown.addKeyFirst': '먼저 {provider} 키를 추가하세요',

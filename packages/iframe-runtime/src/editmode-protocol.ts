@@ -22,7 +22,13 @@ export type ParentToIframe =
   // window.claude.complete() RPC: parent → iframe streaming response.
   | { type: 'CLAUDE_COMPLETE_CHUNK'; id: string; chunk: string }
   | { type: 'CLAUDE_COMPLETE_DONE'; id: string; text: string }
-  | { type: 'CLAUDE_COMPLETE_ERROR'; id: string; message: string };
+  | { type: 'CLAUDE_COMPLETE_ERROR'; id: string; message: string }
+  // Agent-side (verifier) RPC: parent → iframe request for screenshot / eval / logs.
+  // No __codesign envelope — these are the agent v2 alignment protocol, distinct
+  // from the codesign overlay protocol. requestId scopes each request/response pair.
+  | { type: 'AGENT_SCREENSHOT'; requestId: string; path?: string }
+  | { type: 'AGENT_EVAL_JS'; requestId: string; code: string; timeoutMs?: number }
+  | { type: 'AGENT_GET_LOGS'; requestId: string };
 
 /**
  * Messages sent from the preview iframe back to the parent host.
@@ -47,7 +53,29 @@ export type IframeToParent =
   // window.claude.complete() RPC: iframe asks the host to call the LLM.
   // Host MUST stream chunks back via CLAUDE_COMPLETE_CHUNK and finally
   // CLAUDE_COMPLETE_DONE (or CLAUDE_COMPLETE_ERROR on failure).
-  | { type: 'CLAUDE_COMPLETE'; id: string; prompt: string };
+  | { type: 'CLAUDE_COMPLETE'; id: string; prompt: string }
+  // Agent-side (verifier) RPC responses keyed by requestId.
+  | {
+      type: 'AGENT_SCREENSHOT_RESULT';
+      requestId: string;
+      ok: boolean;
+      dataUrl?: string;
+      error?: string;
+    }
+  | {
+      type: 'AGENT_EVAL_JS_RESULT';
+      requestId: string;
+      ok: boolean;
+      /** JSON-stringified return value. Always serialize cycles defensively. */
+      value?: string;
+      error?: string;
+    }
+  | {
+      type: 'AGENT_GET_LOGS_RESULT';
+      requestId: string;
+      ok: true;
+      logs: Array<{ level: string; message: string; ts: number }>;
+    };
 
 // ---------------------------------------------------------------------------
 // EDITMODE block markers + helpers.

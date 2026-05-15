@@ -10,6 +10,7 @@
 // postMessage types and request field names in this package
 // are clone-fidelity-critical. See CLAUDE.md "核心约束".
 
+export * from './assets.js';
 export * from './chat.js';
 export * from './chats.js';
 export * from './comments.js';

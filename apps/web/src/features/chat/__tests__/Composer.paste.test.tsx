@@ -124,9 +124,11 @@ describe('Composer paste image', () => {
   });
 
   it('paste with empty file.name uses pasted-<ISO>-<rand> filename for both attachment and R2 PUT', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
     renderComposer();
     const ta = screen.getByLabelText(/composer/i);
     const file = new File([new Uint8Array([1])], '', { type: 'image/png' });
@@ -135,7 +137,9 @@ describe('Composer paste image', () => {
 
     // attachment filename 跟 PUT URL filename 一致
     const imgs = screen.queryAllByRole('img');
-    const altName = imgs.find((i) => i.getAttribute('alt')?.startsWith('pasted-'))?.getAttribute('alt');
+    const altName = imgs
+      .find((i) => i.getAttribute('alt')?.startsWith('pasted-'))
+      ?.getAttribute('alt');
     expect(altName).toMatch(/^pasted-[\d-]+T[\d-]+.+\.png$/);
 
     const putCall = fetchSpy.mock.calls.find(([, init]) => init?.method === 'PUT');

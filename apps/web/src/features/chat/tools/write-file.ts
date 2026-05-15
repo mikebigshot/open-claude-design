@@ -26,7 +26,9 @@ export function writeFileTool(projectId: string) {
         .describe('MIME type. If omitted, server infers from extension.'),
     }),
     execute: async ({ path, content, asset, mimeType }, { abortSignal }) => {
-      const url = buildUrl(`/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`);
+      const url = buildUrl(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`,
+      );
       const body: Record<string, unknown> = { content };
       if (asset !== undefined) body.asset = asset;
       if (mimeType !== undefined) body.mimeType = mimeType;

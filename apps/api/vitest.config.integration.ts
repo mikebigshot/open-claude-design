@@ -10,10 +10,7 @@ export default defineWorkersConfig({
       // Force resolution of the contracts workspace to *this* checkout's source,
       // not whatever the hoisted node_modules symlink points to. Important for
       // git-worktree setups where node_modules is shared with another branch.
-      '@open-design/contracts': path.resolve(
-        __dirname,
-        '../../packages/contracts/src/index.ts',
-      ),
+      '@open-design/contracts': path.resolve(__dirname, '../../packages/contracts/src/index.ts'),
     },
   },
   test: {

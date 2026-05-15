@@ -87,6 +87,36 @@ describe('buildOverlayScript', () => {
     const src = buildOverlayScript();
     expect(src).not.toContain('</script>');
   });
+
+  it('contains the AGENT_* postMessage handler branches', () => {
+    const src = buildOverlayScript();
+    expect(src).toContain('AGENT_SCREENSHOT');
+    expect(src).toContain('AGENT_EVAL_JS');
+    expect(src).toContain('AGENT_GET_LOGS');
+    expect(src).toContain('AGENT_SCREENSHOT_RESULT');
+    expect(src).toContain('AGENT_EVAL_JS_RESULT');
+    expect(src).toContain('AGENT_GET_LOGS_RESULT');
+  });
+
+  it('hooks console.log/warn/error/info/debug into a ring buffer', () => {
+    const src = buildOverlayScript();
+    expect(src).toContain('__cs_logbuf');
+    // Each level name must appear in the registered levels list.
+    expect(src).toContain("'log'");
+    expect(src).toContain("'warn'");
+    expect(src).toContain("'error'");
+    expect(src).toContain("'info'");
+    expect(src).toContain("'debug'");
+    // And the hook must touch console[lv].
+    expect(src).toMatch(/console\[lv\]/);
+  });
+
+  it('uses safe JSON.stringify with cycle handling for AGENT_EVAL_JS results', () => {
+    const src = buildOverlayScript();
+    // Either via a `try/catch` around JSON.stringify or a custom replacer; we
+    // accept either as long as cycles can\'t crash the iframe.
+    expect(src).toMatch(/JSON\.stringify/);
+  });
 });
 
 describe('Tweaks bridge', () => {

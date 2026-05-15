@@ -81,6 +81,24 @@ export interface MessageRow {
   created_at: string;
 }
 
+// ---------- assets ----------
+// 一行 = 一份注册到 design-system manifest 的资源（register_assets 工具）。
+// (project_id, asset, path) 是逻辑唯一键 —— 重新注册同一三元组 = 复用同一行
+// 并重置 status 为 needs-review。详见 0007_assets.sql。
+export interface AssetRow {
+  id: string;
+  project_id: string;
+  asset: string;
+  path: string;
+  subtitle: string | null;
+  viewport_w: number | null;
+  viewport_h: number | null;
+  status: 'needs-review' | 'approved' | 'changes-requested';
+  group_: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ---------- comments ----------
 // 一行 = 一个评论钉子。id 由客户端生成（crypto.randomUUID）以支持 optimistic UI。
 // (x, y) 是 viewport 像素坐标；n 是 1-based 显示序号；selector 可选定位元素。

@@ -62,20 +62,20 @@ OmeletteService（thin LLM proxy + 工具后端）
 
 #### 关键观察
 
-| 维度 | 实际实现 |
-|---|---|
-| 主 app 前端栈 | Vite + React Router v6 + styled-components；代码编辑器是原生 `<textarea>` + 手写 `<div>` 行号，无 Monaco / CodeMirror |
-| 后端协议 | Connect / gRPC-Web + Protobuf；Service 名 `anthropic.omelette.api.v1alpha.OmeletteService` |
-| Agent 工具协议 | MCP（Model Context Protocol）—— 抓到完整 `tools/list` 数据 + `defer_loading` 字段，第三方 MCP server 真实可接入 |
-| 工具路由 | 30+ 工具按 9 类分发：云端 RPC（EditFile / GetFile / …）/ 本地 FSA（local_*）/ iframe DOM（show_html / eval_js / screenshot）/ 客户端纯逻辑（snip / update_todos）/ 派生 sub-agent / 第三方 MCP / LLM 内置（web_search / web_fetch） |
-| Verifier 子 agent | 跟主 agent **共享 system prompt + 共享工具集 + 共享 history**，仅靠在 fork tool_result 里塞角色重置 prompt + sessionUUID 追加 `::verifier` 后缀 + max_tokens 砍半实现 |
-| 预览 iframe | 每个项目独立子域 `{project-uuid}.claudeusercontent.com`；主站 CSP `default-src 'none'; frame-ancestors 'none'`；token 4 段：`{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}` |
-| 生成产物运行时 | React **18.3.1** + Babel Standalone **7.29.0**（UMD，integrity hash 锁死）+ 内联 `style={{...}}` JS 对象 + Google Fonts + 多 JSX `<script type="text/babel" src="*.jsx">` 全局 window 挂载 |
-| Tweaks 协议 | artifact 内嵌 `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` + `EDIT_STYLE` postMessage 实时回写，不重跑模型 |
-| 客户端权威存储 | 浏览器持有完整 chats / messages / contentBlocks / 工具 IO / viewState / assets manifest，定期通过 `UpdateProjectData` 整包推回云端；**每个 tool call 的 input/output 都被持久化** |
-| `done` 复合操作 | EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData 一连串触发 |
-| Streaming | 不是 Anthropic 原生 SSE，OmeletteService 重新封装为 `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers` 自定义帧 |
-| 本地文件夹桥 | File System Access API + 4 个 `local_*` 工具（local_ls / local_read / local_grep / local_copy_to_project）；本地文件**不传** OmeletteService，只在 LLM 上下文里出现 |
+| 维度              | 实际实现                                                                                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主 app 前端栈     | Vite + React Router v6 + styled-components；代码编辑器是原生 `<textarea>` + 手写 `<div>` 行号，无 Monaco / CodeMirror                                                                                                                 |
+| 后端协议          | Connect / gRPC-Web + Protobuf；Service 名 `anthropic.omelette.api.v1alpha.OmeletteService`                                                                                                                                            |
+| Agent 工具协议    | MCP（Model Context Protocol）—— 抓到完整 `tools/list` 数据 + `defer_loading` 字段，第三方 MCP server 真实可接入                                                                                                                       |
+| 工具路由          | 30+ 工具按 9 类分发：云端 RPC（EditFile / GetFile / …）/ 本地 FSA（local\_\*）/ iframe DOM（show_html / eval_js / screenshot）/ 客户端纯逻辑（snip / update_todos）/ 派生 sub-agent / 第三方 MCP / LLM 内置（web_search / web_fetch） |
+| Verifier 子 agent | 跟主 agent **共享 system prompt + 共享工具集 + 共享 history**，仅靠在 fork tool_result 里塞角色重置 prompt + sessionUUID 追加 `::verifier` 后缀 + max_tokens 砍半实现                                                                 |
+| 预览 iframe       | 每个项目独立子域 `{project-uuid}.claudeusercontent.com`；主站 CSP `default-src 'none'; frame-ancestors 'none'`；token 4 段：`{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}`                                                  |
+| 生成产物运行时    | React **18.3.1** + Babel Standalone **7.29.0**（UMD，integrity hash 锁死）+ 内联 `style={{...}}` JS 对象 + Google Fonts + 多 JSX `<script type="text/babel" src="*.jsx">` 全局 window 挂载                                            |
+| Tweaks 协议       | artifact 内嵌 `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` + `EDIT_STYLE` postMessage 实时回写，不重跑模型                                                                                                                              |
+| 客户端权威存储    | 浏览器持有完整 chats / messages / contentBlocks / 工具 IO / viewState / assets manifest，定期通过 `UpdateProjectData` 整包推回云端；**每个 tool call 的 input/output 都被持久化**                                                     |
+| `done` 复合操作   | EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData 一连串触发                                                                                                                                                           |
+| Streaming         | 不是 Anthropic 原生 SSE，OmeletteService 重新封装为 `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers` 自定义帧                                                                            |
+| 本地文件夹桥      | File System Access API + 4 个 `local_*` 工具（local_ls / local_read / local_grep / local_copy_to_project）；本地文件**不传** OmeletteService，只在 LLM 上下文里出现                                                                   |
 
 ### Open Claude Design 长什么样
 
@@ -124,14 +124,14 @@ LLM provider（用户 BYOK，浏览器直连，worker 看不见）
 
 三个项目都是 Claude Design 的开源复刻，差异主要在 **agent loop 跑在哪、chat / 文件落在哪**。
 
-|  | Claude Design（原版） | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
-|---|---|---|---|---|
-| 形态 | Web (claude.ai) | Desktop (Electron) | Web app + 本地 daemon | **纯 Web + Cloudflare Workers** |
-| Agent loop 跑在哪 | 浏览器 tab | Electron 主进程内捆绑 [pi-ai] | 用户已装的 CLI（Codex / Cursor / Gemini / … 13 个适配器） | **浏览器 tab（Vercel AI SDK ToolLoopAgent，BYOK）** |
-| Chat / 文件落在哪 | 云端（OmeletteService + 内容寻址 blob） | 本地 SQLite + 本地文件系统 | 本地 SQLite + 本地文件系统 | **Cloudflare D1 + R2（你自己的账号）** |
-| 是否需要本地装 CLI / 桌面壳 | 不需要 | 需要（Electron 安装包） | 需要（npm + 13 个 CLI 之一） | **不需要 —— 浏览器开网页就能用** |
-| 跟原版的同构度 | 100% | 中（agent 在桌面 runtime 而非 web） | 中（agent 在用户 CLI，靠 daemon spawn） | **高 —— 浏览器跑 agent + 后端只做存储，跟原版同位** |
-| License | 闭源 | MIT | Apache-2.0 | Apache-2.0 |
+|                             | Claude Design（原版）                   | [open-codesign][ocod]               | [nexu-io/open-design][nexu]                               | **Open Claude Design**                              |
+| --------------------------- | --------------------------------------- | ----------------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
+| 形态                        | Web (claude.ai)                         | Desktop (Electron)                  | Web app + 本地 daemon                                     | **纯 Web + Cloudflare Workers**                     |
+| Agent loop 跑在哪           | 浏览器 tab                              | Electron 主进程内捆绑 [pi-ai]       | 用户已装的 CLI（Codex / Cursor / Gemini / … 13 个适配器） | **浏览器 tab（Vercel AI SDK ToolLoopAgent，BYOK）** |
+| Chat / 文件落在哪           | 云端（OmeletteService + 内容寻址 blob） | 本地 SQLite + 本地文件系统          | 本地 SQLite + 本地文件系统                                | **Cloudflare D1 + R2（你自己的账号）**              |
+| 是否需要本地装 CLI / 桌面壳 | 不需要                                  | 需要（Electron 安装包）             | 需要（npm + 13 个 CLI 之一）                              | **不需要 —— 浏览器开网页就能用**                    |
+| 跟原版的同构度              | 100%                                    | 中（agent 在桌面 runtime 而非 web） | 中（agent 在用户 CLI，靠 daemon spawn）                   | **高 —— 浏览器跑 agent + 后端只做存储，跟原版同位** |
+| License                     | 闭源                                    | MIT                                 | Apache-2.0                                                | Apache-2.0                                          |
 
 [ocod]: https://github.com/OpenCoworkAI/open-codesign
 [nexu]: https://github.com/nexu-io/open-design

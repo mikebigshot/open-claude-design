@@ -28,9 +28,107 @@
 
 import { Chat } from '@ai-sdk/react';
 import { DirectChatTransport, type UIMessage } from 'ai';
-import { createAgent, type CreateAgentOptions } from './agent.js';
+import { createAgent, type AgentMode, type CreateAgentOptions } from './agent.js';
 import { FORK_BOUNDARY_PROMPT } from './verifier-prompt.js';
 import type { DesignAgentUIMessage } from './ui-messages.js';
+
+// ── §2.8 verifier blocked tool set ────────────────────────────────────────
+//
+// Source: v2 `wonderful-mendeleev-5231a7/.../artifacts/agent-loop/
+//          verifier-tools-and-fork-boundary.raw.js` — the `see` Set.
+//
+// We intersect the v2 list with "tools we ship in our makeTools()" and add
+// the W2-bound tools (`snip`, `register_assets`, `questions_v2` etc.) so
+// when those are wired in later they're blocked from day one.
+//
+// Note name mapping: v2 calls the str-replace tool `str_replace_edit`; we
+// call ours `str_replace_based_edit_tool` (matching @anthropic-ai/sdk's
+// canonical name). Use OUR name in this set since the wrapper matches
+// against tool keys in `makeTools()`'s output.
+export const BLOCKED_TOOLS_VERIFIER: ReadonlySet<string> = new Set<string>([
+  // Mutations / writes
+  'write_file',
+  'str_replace_based_edit_tool',
+  'delete_file',
+  'copy_files',
+  // Project state mutations
+  'update_todos',
+  'done',
+  // Recursive fork prevention (verifier must not spawn another verifier)
+  'fork_verifier_agent',
+  // W2-bound tools — defensive: if any of them lands in makeTools later, the
+  // wrapper already knows to block them inside a verifier fork.
+  'snip',
+  'register_assets',
+  'unregister_assets',
+  'questions_v2',
+  'show_to_user',
+  'save_screenshot',
+  'set_project_title',
+  'save_as_template',
+  'run_script',
+]);
+
+/** Convenience predicate over BLOCKED_TOOLS_VERIFIER — for readability. */
+export function isBlockedInVerifier(toolName: string): boolean {
+  return BLOCKED_TOOLS_VERIFIER.has(toolName);
+}
+
+/**
+ * Loose tool shape (matches what `makeTools()` returns / what AI SDK 6's
+ * `tool()` helper produces). Only the bits we care about — `description`,
+ * `inputSchema`, `execute` — are referenced. Extra fields (parameters,
+ * providerOptions, etc.) flow through untouched.
+ *
+ * Using `any` here intentionally: the actual AI SDK Tool type has phantom
+ * generics we don't need to re-prove. The wrapper preserves the shape, and
+ * the wrapped tools are immediately handed to ToolLoopAgent which re-types
+ * them at the consumption boundary.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type AnyToolish = any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
+ * v2 verbatim error message (with our terminator name). Modeled on the
+ * verifier-loop's `te.push({...is_error:true, content: \`Tool "${P.name}"
+ * is not available in this fork...\`})` branch.
+ */
+function blockedExecuteMessage(toolName: string): string {
+  return `Tool "${toolName}" is not available in this fork. You are the verifier subagent — use show_html/screenshot/get_webview_logs/eval_js to verify, then call verification_feedback with your verdict.`;
+}
+
+/**
+ * Wrap a `makeTools()` result so blocked tools' execute() short-circuits to
+ * an is-error tool_result instead of running the real implementation. In
+ * `'main'` mode the wrap is a pass-through (same execute references).
+ *
+ * Defense-in-depth: the FORK_BOUNDARY_PROMPT already tells the verifier not
+ * to call mutation tools, but the prompt is a soft guardrail; this hard
+ * guardrail makes a misbehaving verifier unable to actually mutate state.
+ */
+export function wrapToolsForVerifierMode<T extends Record<string, AnyToolish>>(
+  tools: T,
+  mode: AgentMode,
+): T {
+  if (mode === 'main') return tools;
+  const wrapped: Record<string, AnyToolish> = {};
+  for (const key of Object.keys(tools)) {
+    const original = tools[key] as AnyToolish;
+    if (!isBlockedInVerifier(key)) {
+      wrapped[key] = original;
+      continue;
+    }
+    wrapped[key] = {
+      ...original,
+      execute: async () => ({
+        isError: true,
+        content: blockedExecuteMessage(key),
+      }),
+    } as AnyToolish;
+  }
+  return wrapped as T;
+}
 
 export interface SpawnVerifierOptions extends Omit<CreateAgentOptions, 'mode' | 'onTodosUpdate'> {
   /** The main agent's session id (used to derive `::verifier` suffix). */

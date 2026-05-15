@@ -157,7 +157,8 @@ export const ja: Dict = {
   'fileTree.title': 'デザインファイル',
   'fileTree.todosLabel': 'Todo',
   'fileTree.empty': 'プロジェクトにファイルがまだありません。',
-  'fileTree.emptyHint': '+ ボタンをクリックして新しいチャットを始め、Atelier にファイルを作成させましょう。',
+  'fileTree.emptyHint':
+    '+ ボタンをクリックして新しいチャットを始め、Atelier にファイルを作成させましょう。',
   'fileTree.errorLoad': 'ファイルを読み込めませんでした：{error}',
   'fileTree.newFile': '新規ファイル',
   'fileTree.newFolder': '新規フォルダ',
@@ -193,7 +194,8 @@ export const ja: Dict = {
   'preview.emptySub': 'Atelier の出力はここに表示されます。',
   'preview.commentHint': 'プレビューの任意の場所をクリックしてコメント pin を配置',
   'preview.toolNeedsPreview': 'このツールを使うにはまずプレビューを生成してください',
-  'preview.tweaksUnavailable': 'この artifact は Tweaks を公開していません — Atelier に調整可能なパラメータの追加を依頼してください',
+  'preview.tweaksUnavailable':
+    'この artifact は Tweaks を公開していません — Atelier に調整可能なパラメータの追加を依頼してください',
 
   'commentPin.empty': '（空の pin）',
   'commentPin.jumpTitle': 'クリックしてこの pin に移動',
@@ -237,8 +239,24 @@ export const ja: Dict = {
 
   'chat.tool.writing': '書き込み中',
   'chat.tool.reading': '読み取り中',
+  'chat.tool.editing': '編集中',
   'chat.tool.listing': '一覧中',
+  'chat.tool.copying': 'コピー中',
+  'chat.tool.deleting': '削除中',
+  'chat.tool.viewing': '表示中',
+  'chat.tool.fetching': '取得中',
+  'chat.tool.grep': '検索',
   'chat.tool.done': '完了',
+  'chat.tool.snipping': 'カット',
+  'chat.tool.todos': 'タスク',
+  'chat.tool.registering': 'アセット',
+  'chat.tool.skill': 'スキル',
+  'chat.tool.verifying': '検証',
+  'chat.tool.feedback': 'フィードバック',
+  'chat.tool.questioning': '質問',
+  'chat.tool.screenshotting': 'スクショ',
+  'chat.tool.evaluating': '実行',
+  'chat.tool.logs': 'ログ',
 
   'comments.errorLoad':
     'コメントを読み込めませんでした：{error}。ページを再読み込みしてもう一度お試しください。',
@@ -248,7 +266,8 @@ export const ja: Dict = {
     '今作成する新しい pin は保存されますが、以前の pin（あれば）は取得できませんでした。',
   'comments.empty.intro': 'コメントはまだありません。ツールバーの ',
   'comments.empty.toolName': 'コメント',
-  'comments.empty.instruction': ' ツールをクリックして、プレビューの任意の場所をクリックして pin を配置します。',
+  'comments.empty.instruction':
+    ' ツールをクリックして、プレビューの任意の場所をクリックして pin を配置します。',
   'comments.deletePinAria': 'pin {n} を削除',
   'comments.selectPinAria': 'コメント {n} を選択',
   'comments.selectedCount': '{n} 件選択中',
@@ -265,8 +284,15 @@ export const ja: Dict = {
   'import.option.figma': 'Figma ファイル',
   'import.option.uploadScreenshots': 'スクリーンショットをアップロード',
   'import.option.designSystems': 'デザインシステムを参照',
+  'import.option.attachSkill': 'スキルを添付',
   'import.soonBadge': '近日',
   'import.comingSoon': '近日公開',
+
+  'skillPicker.menuAria': 'スキル選択',
+  'skillPicker.empty': '利用可能なスキルがありません',
+
+  'skillChip.kindLabel': 'スキル',
+  'skillChip.removeAria': '{name} を削除',
 
   'modelDropdown.noKey': 'キーなし',
   'modelDropdown.addKeyFirst': 'まず {provider} のキーを追加してください',

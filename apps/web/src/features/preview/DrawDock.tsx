@@ -238,7 +238,9 @@ export function DrawDock({
 
       <Divider />
 
-      <Counter data-testid="draw-stroke-count">{t('drawDock.marksCount', { n: strokeCount })}</Counter>
+      <Counter data-testid="draw-stroke-count">
+        {t('drawDock.marksCount', { n: strokeCount })}
+      </Counter>
 
       <IconBtn
         type="button"

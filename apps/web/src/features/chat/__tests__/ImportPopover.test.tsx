@@ -17,9 +17,11 @@ let fetchMock: ReturnType<typeof vi.fn>;
 function renderPopover(props: Partial<React.ComponentProps<typeof ImportPopover>> = {}): {
   onClose: ReturnType<typeof vi.fn>;
   onAttachmentAdd: ReturnType<typeof vi.fn>;
+  onAttachSkillRequested: ReturnType<typeof vi.fn>;
 } {
   const onClose = vi.fn();
   const onAttachmentAdd = vi.fn();
+  const onAttachSkillRequested = vi.fn();
   render(
     <ThemeProvider theme={theme}>
       <ImportPopover
@@ -27,11 +29,12 @@ function renderPopover(props: Partial<React.ComponentProps<typeof ImportPopover>
         projectId="proj1"
         onClose={onClose}
         onAttachmentAdd={onAttachmentAdd}
+        onAttachSkillRequested={onAttachSkillRequested}
         {...props}
       />
     </ThemeProvider>,
   );
-  return { onClose, onAttachmentAdd };
+  return { onClose, onAttachmentAdd, onAttachSkillRequested };
 }
 
 beforeEach(() => {
@@ -51,22 +54,41 @@ describe('ImportPopover', () => {
   it('returns null when open=false', () => {
     const { container } = render(
       <ThemeProvider theme={theme}>
-        <ImportPopover open={false} projectId="p" onClose={() => {}} onAttachmentAdd={() => {}} />
+        <ImportPopover
+          open={false}
+          projectId="p"
+          onClose={() => {}}
+          onAttachmentAdd={() => {}}
+          onAttachSkillRequested={() => {}}
+        />
       </ThemeProvider>,
     );
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders 5 menu items, only Upload enabled', () => {
+  it('renders 6 menu items (4 SOON + Upload + Attach skill active)', () => {
     renderPopover();
     const items = screen.getAllByRole('menuitem');
-    expect(items).toHaveLength(5);
+    expect(items).toHaveLength(6);
 
     const upload = items.find((i) => i.textContent?.includes('Upload'))!;
     const codebase = items.find((i) => i.textContent?.includes('Local codebase'))!;
+    const attachSkill = items.find((i) => i.textContent?.includes('Attach skill'))!;
     expect(upload).not.toBeDisabled();
     expect(codebase).toBeDisabled();
     expect(codebase.textContent).toContain('SOON');
+    // Attach skill is active, no SOON badge
+    expect(attachSkill).not.toBeDisabled();
+    expect(attachSkill.textContent).not.toContain('SOON');
+  });
+
+  it('clicking "Attach skill" fires onAttachSkillRequested', () => {
+    const { onAttachSkillRequested } = renderPopover();
+    const attachSkill = screen
+      .getAllByRole('menuitem')
+      .find((i) => i.textContent?.includes('Attach skill'))!;
+    act(() => fireEvent.click(attachSkill));
+    expect(onAttachSkillRequested).toHaveBeenCalled();
   });
 
   it('outside-click triggers onClose', () => {
@@ -165,6 +187,7 @@ describe('ImportPopover', () => {
           projectId="proj space"
           onClose={() => {}}
           onAttachmentAdd={onAttachmentAdd}
+          onAttachSkillRequested={() => {}}
         />
       </ThemeProvider>,
     );

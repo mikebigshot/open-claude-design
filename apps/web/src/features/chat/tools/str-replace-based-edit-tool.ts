@@ -13,7 +13,9 @@ export function strReplaceBasedEditTool(projectId: string) {
       new_str: z.string().describe('Replacement text.'),
     }),
     execute: async ({ path, old_str, new_str }, { abortSignal }) => {
-      const url = buildUrl(`/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`);
+      const url = buildUrl(
+        `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`,
+      );
       const getRes = await fetch(url, { signal: abortSignal });
       if (!getRes.ok) {
         return { ok: false as const, error: 'not_found' as const };

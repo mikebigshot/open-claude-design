@@ -148,7 +148,6 @@ const NewBtn = styled.button`
   }
 `;
 
-
 // Inline confirm popover for delete (anchored under the right-clicked tab).
 const ConfirmPop = styled.div`
   position: absolute;
@@ -396,140 +395,140 @@ export function ChatTabBar({ selection, onSelect, commentsCount }: ChatTabBarPro
   return (
     <Bar role="tablist" aria-label={t('workspace.chats.aria')}>
       <ScrollArea ref={scrollAreaRef} data-testid="chat-tabbar-scroll">
-      {chats.map((c, idx) => {
-        const active = isChatActive(c.id);
-        const renaming = renamingId === c.id;
-        const showConfirm = confirmId === c.id;
-        return (
-          <Tab
-            key={c.id}
-            role="tab"
-            tabIndex={0}
-            aria-selected={active}
-            $active={active}
-            onClick={() => {
-              if (renaming) return;
-              onSelect({ kind: 'chat', chatId: c.id });
-            }}
-            onDoubleClick={() => {
-              setRenameDraft(c.title ?? '');
-              setRenamingId(c.id);
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              if (chats.length <= 1) return; // no delete for last chat
-              setConfirmId(c.id);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
+        {chats.map((c, idx) => {
+          const active = isChatActive(c.id);
+          const renaming = renamingId === c.id;
+          const showConfirm = confirmId === c.id;
+          return (
+            <Tab
+              key={c.id}
+              role="tab"
+              tabIndex={0}
+              aria-selected={active}
+              $active={active}
+              onClick={() => {
+                if (renaming) return;
                 onSelect({ kind: 'chat', chatId: c.id });
-              }
-            }}
-            data-testid={`chat-tab-${c.id}`}
-            data-active={active ? 'true' : 'false'}
-          >
-            {renaming ? (
-              <RenameInput
-                ref={renameInputRef}
-                value={renameDraft}
-                onChange={(e) => setRenameDraft(e.target.value)}
-                onBlur={() => submitRename(c.id)}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void submitRename(c.id);
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    setRenamingId(null);
-                  }
-                }}
-                aria-label={`Rename ${chatLabel(c.title, idx)}`}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : (
-              <span>{chatLabel(c.title, idx)}</span>
-            )}
-            {active && !renaming && <ActiveBar />}
-            {showConfirm && (
-              <ConfirmPop
-                role="dialog"
-                aria-label={t('workspace.chats.deleteConfirmAria')}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <span>{t('workspace.chats.deleteConfirmAria')}</span>
-                <DangerBtn
-                  type="button"
-                  onClick={() => void handleDeleteChat(c.id)}
-                  data-testid={`chat-delete-confirm-${c.id}`}
+              }}
+              onDoubleClick={() => {
+                setRenameDraft(c.title ?? '');
+                setRenamingId(c.id);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (chats.length <= 1) return; // no delete for last chat
+                setConfirmId(c.id);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect({ kind: 'chat', chatId: c.id });
+                }
+              }}
+              data-testid={`chat-tab-${c.id}`}
+              data-active={active ? 'true' : 'false'}
+            >
+              {renaming ? (
+                <RenameInput
+                  ref={renameInputRef}
+                  value={renameDraft}
+                  onChange={(e) => setRenameDraft(e.target.value)}
+                  onBlur={() => submitRename(c.id)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void submitRename(c.id);
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setRenamingId(null);
+                    }
+                  }}
+                  aria-label={`Rename ${chatLabel(c.title, idx)}`}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span>{chatLabel(c.title, idx)}</span>
+              )}
+              {active && !renaming && <ActiveBar />}
+              {showConfirm && (
+                <ConfirmPop
+                  role="dialog"
+                  aria-label={t('workspace.chats.deleteConfirmAria')}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  {t('common.delete')}
-                </DangerBtn>
-                <GhostBtn type="button" onClick={() => setConfirmId(null)}>
-                  {t('common.cancel')}
-                </GhostBtn>
-              </ConfirmPop>
-            )}
-          </Tab>
-        );
-      })}
+                  <span>{t('workspace.chats.deleteConfirmAria')}</span>
+                  <DangerBtn
+                    type="button"
+                    onClick={() => void handleDeleteChat(c.id)}
+                    data-testid={`chat-delete-confirm-${c.id}`}
+                  >
+                    {t('common.delete')}
+                  </DangerBtn>
+                  <GhostBtn type="button" onClick={() => setConfirmId(null)}>
+                    {t('common.cancel')}
+                  </GhostBtn>
+                </ConfirmPop>
+              )}
+            </Tab>
+          );
+        })}
       </ScrollArea>
 
       <FixedArea>
-      {/* 加号固定在 ScrollArea 末尾、Comments/Activity 之前 —— chat 多到溢出时
+        {/* 加号固定在 ScrollArea 末尾、Comments/Activity 之前 —— chat 多到溢出时
           不会被滚出视口（用户报告：第 4 个 chat 后看不到 + 按钮）。*/}
-      <NewBtn
-        type="button"
-        title={t('workspace.chats.newChat')}
-        aria-label={t('workspace.chats.newChat')}
-        onClick={handleNewChat}
-        data-testid="chat-tab-new"
-      >
-        +
-      </NewBtn>
-      <Tab
-        role="tab"
-        tabIndex={0}
-        aria-selected={selection.kind === 'comments'}
-        $active={selection.kind === 'comments'}
-        onClick={() => onSelect({ kind: 'comments' })}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect({ kind: 'comments' });
-          }
-        }}
-        data-testid="chat-tab-comments"
-        data-active={selection.kind === 'comments' ? 'true' : 'false'}
-      >
-        <span>
-          {commentsCount > 0
-            ? t('workspace.chats.commentsTabWithCount', { n: commentsCount })
-            : t('workspace.chats.commentsTab')}
-        </span>
-        {selection.kind === 'comments' && <ActiveBar />}
-      </Tab>
+        <NewBtn
+          type="button"
+          title={t('workspace.chats.newChat')}
+          aria-label={t('workspace.chats.newChat')}
+          onClick={handleNewChat}
+          data-testid="chat-tab-new"
+        >
+          +
+        </NewBtn>
+        <Tab
+          role="tab"
+          tabIndex={0}
+          aria-selected={selection.kind === 'comments'}
+          $active={selection.kind === 'comments'}
+          onClick={() => onSelect({ kind: 'comments' })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect({ kind: 'comments' });
+            }
+          }}
+          data-testid="chat-tab-comments"
+          data-active={selection.kind === 'comments' ? 'true' : 'false'}
+        >
+          <span>
+            {commentsCount > 0
+              ? t('workspace.chats.commentsTabWithCount', { n: commentsCount })
+              : t('workspace.chats.commentsTab')}
+          </span>
+          {selection.kind === 'comments' && <ActiveBar />}
+        </Tab>
 
-      <Tab
-        role="tab"
-        tabIndex={0}
-        aria-selected={selection.kind === 'activity'}
-        $active={selection.kind === 'activity'}
-        onClick={() => onSelect({ kind: 'activity' })}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onSelect({ kind: 'activity' });
-          }
-        }}
-        data-testid="chat-tab-activity"
-        data-active={selection.kind === 'activity' ? 'true' : 'false'}
-      >
-        <span>{t('workspace.chats.activityTab')}</span>
-        {selection.kind === 'activity' && <ActiveBar />}
-      </Tab>
+        <Tab
+          role="tab"
+          tabIndex={0}
+          aria-selected={selection.kind === 'activity'}
+          $active={selection.kind === 'activity'}
+          onClick={() => onSelect({ kind: 'activity' })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect({ kind: 'activity' });
+            }
+          }}
+          data-testid="chat-tab-activity"
+          data-active={selection.kind === 'activity' ? 'true' : 'false'}
+        >
+          <span>{t('workspace.chats.activityTab')}</span>
+          {selection.kind === 'activity' && <ActiveBar />}
+        </Tab>
       </FixedArea>
     </Bar>
   );

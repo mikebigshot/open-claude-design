@@ -63,4 +63,3 @@ export function SearchIcon({ size = 13 }: IconProps) {
     </svg>
   );
 }
-

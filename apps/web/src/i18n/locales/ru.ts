@@ -106,8 +106,7 @@ export const ru: Dict = {
   'header.settings': 'Настройки',
 
   'workspace.chatToolsAria': 'Вкладки чата и инструменты',
-  'workspace.dropFilesHint':
-    '↓ ПЕРЕТАЩИТЕ ФАЙЛЫ СЮДА — Atelier использует их как контекст',
+  'workspace.dropFilesHint': '↓ ПЕРЕТАЩИТЕ ФАЙЛЫ СЮДА — Atelier использует их как контекст',
   'workspace.errorMissingId': 'Отсутствует id проекта.',
   'workspace.errorNotFoundTitle': 'Проект не найден',
   'workspace.errorNotFoundLine1': 'Не удалось найти проект с id {id}.',
@@ -224,8 +223,7 @@ export const ru: Dict = {
   'editFloat.color': 'Цвет',
 
   'chat.addContext': 'Добавить контекст',
-  'chat.composerPlaceholder':
-    'Попросите Atelier что-нибудь спроектировать или опишите изменение…',
+  'chat.composerPlaceholder': 'Попросите Atelier что-нибудь спроектировать или опишите изменение…',
   'chat.composerAria': 'Поле ввода чата',
   'chat.attachComingSoon': 'Прикрепить (Скоро)',
   'chat.attachAria': 'Прикрепить',
@@ -240,8 +238,24 @@ export const ru: Dict = {
 
   'chat.tool.writing': 'ПИШЕТ',
   'chat.tool.reading': 'ЧИТАЕТ',
+  'chat.tool.editing': 'ПРАВИТ',
   'chat.tool.listing': 'СПИСОК',
+  'chat.tool.copying': 'КОПИЯ',
+  'chat.tool.deleting': 'УДАЛЯЕТ',
+  'chat.tool.viewing': 'СМОТРИТ',
+  'chat.tool.fetching': 'ЗАГРУЗКА',
+  'chat.tool.grep': 'ПОИСК',
   'chat.tool.done': 'ГОТОВО',
+  'chat.tool.snipping': 'ОБРЕЗ',
+  'chat.tool.todos': 'ЗАДАЧИ',
+  'chat.tool.registering': 'РЕСУРСЫ',
+  'chat.tool.skill': 'СКИЛЛ',
+  'chat.tool.verifying': 'ПРОВЕРКА',
+  'chat.tool.feedback': 'ОТЗЫВ',
+  'chat.tool.questioning': 'ВОПРОС',
+  'chat.tool.screenshotting': 'СНИМОК',
+  'chat.tool.evaluating': 'EVAL',
+  'chat.tool.logs': 'ЛОГИ',
 
   'comments.errorLoad':
     'Не удалось загрузить комментарии: {error}. Перезагрузите страницу, чтобы попробовать снова.',
@@ -269,8 +283,15 @@ export const ru: Dict = {
   'import.option.figma': 'Файл Figma',
   'import.option.uploadScreenshots': 'Загрузить скриншоты',
   'import.option.designSystems': 'Обзор дизайн-систем',
+  'import.option.attachSkill': 'Добавить навык',
   'import.soonBadge': 'СКОРО',
   'import.comingSoon': 'Скоро',
+
+  'skillPicker.menuAria': 'Выбор навыка',
+  'skillPicker.empty': 'Нет доступных навыков',
+
+  'skillChip.kindLabel': 'навык',
+  'skillChip.removeAria': 'Убрать {name}',
 
   'modelDropdown.noKey': 'нет ключа',
   'modelDropdown.addKeyFirst': 'Сначала добавьте ключ {provider}',

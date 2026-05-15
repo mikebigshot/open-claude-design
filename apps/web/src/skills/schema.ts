@@ -3,6 +3,13 @@ import { z } from 'zod';
 export const SkillFrontmatterV1 = z.object({
   name: z.string(),
   description: z.string(),
+  /**
+   * v2 capture (research/claude-design-v2/05-skills-system.md): some skills
+   * (typically org-level customs) carry hidden:true so they don't appear in
+   * the public skill list. invoke_skill must still resolve them by name —
+   * use getSkillByName / getSkill, NOT listSkills(), for that path.
+   */
+  hidden: z.boolean().default(false),
   trigger: z.object({ keywords: z.array(z.string()).default([]) }).default({ keywords: [] }),
   od: z
     .object({

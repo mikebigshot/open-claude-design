@@ -614,10 +614,7 @@ export function Home() {
           },
         });
         // 加进列表 + NEW 徽章
-        setProjects((prev) => [
-          result.project,
-          ...prev.filter((p) => p.id !== result.project.id),
-        ]);
+        setProjects((prev) => [result.project, ...prev.filter((p) => p.id !== result.project.id)]);
         setJustCreatedId(result.project.id);
         if (result.filesSkipped.length > 0) {
           showToast({
@@ -665,7 +662,9 @@ export function Home() {
           <LogoIcon size={22} />
           <BrandText>
             <BrandTitle>{t('app.brand')}</BrandTitle>
-            <BrandSub as="a" href="https://www.imsai.cc/" target="_blank" rel="noopener noreferrer">{t('app.brandSub')}</BrandSub>
+            <BrandSub as="a" href="https://www.imsai.cc/" target="_blank" rel="noopener noreferrer">
+              {t('app.brandSub')}
+            </BrandSub>
           </BrandText>
           <ResearchBadge>{t('app.brandPill')}</ResearchBadge>
         </Brand>

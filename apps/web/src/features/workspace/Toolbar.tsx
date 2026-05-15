@@ -170,7 +170,11 @@ const MenuItemSub = styled.div`
 
 interface ToolDef {
   key: NonNullable<Tool>;
-  labelKey: 'toolbar.tool.tweaks' | 'toolbar.tool.comment' | 'toolbar.tool.edit' | 'toolbar.tool.draw';
+  labelKey:
+    | 'toolbar.tool.tweaks'
+    | 'toolbar.tool.comment'
+    | 'toolbar.tool.edit'
+    | 'toolbar.tool.draw';
   icon: React.ReactNode;
 }
 

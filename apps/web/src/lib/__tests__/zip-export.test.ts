@@ -103,12 +103,7 @@ describe('bundleProjectAsZip', () => {
       .map((f) => f.name)
       .sort();
     // 项目源文件 + 一个 standalone HTML wrapper：'<Project Name> Prototype.html'
-    expect(fileNames).toEqual([
-      'App.jsx',
-      'demo Prototype.html',
-      'src/Button.jsx',
-      'styles.css',
-    ]);
+    expect(fileNames).toEqual(['App.jsx', 'demo Prototype.html', 'src/Button.jsx', 'styles.css']);
     expect(await zip.files['App.jsx']!.async('string')).toBe('export default function App(){}');
     expect(await zip.files['src/Button.jsx']!.async('string')).toBe(
       'export const Button = () => null',

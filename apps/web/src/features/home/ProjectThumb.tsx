@@ -137,8 +137,13 @@ const Skeleton = styled.div`
   );
   animation: pulse 1.4s ease-in-out infinite;
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.6;
+    }
   }
 `;
 
@@ -271,20 +276,13 @@ export function ProjectThumb({ projectId, updatedAt, fallback }: ProjectThumbPro
     };
   }, [visible, projectId, updatedAt]);
 
-  const stageStyle = useMemo(
-    () => ({ transform: `scale(${scale})` }) as const,
-    [scale],
-  );
+  const stageStyle = useMemo(() => ({ transform: `scale(${scale})` }) as const, [scale]);
 
   return (
     <Root ref={rootRef} aria-hidden>
       {srcdoc ? (
         <Stage style={stageStyle}>
-          <StageIframe
-            title={`Preview ${projectId}`}
-            srcDoc={srcdoc}
-            sandbox="allow-scripts"
-          />
+          <StageIframe title={`Preview ${projectId}`} srcDoc={srcdoc} sandbox="allow-scripts" />
         </Stage>
       ) : failed ? (
         fallback

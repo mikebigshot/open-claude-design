@@ -8,8 +8,12 @@ import { getModelPref } from '../../lib/model-pref.js';
 import { subscribeModelChange } from '../../lib/model-pref-events.js';
 import { createAgent } from './agent.js';
 import { useTodos } from './todos-state.js';
-import type { DesignAgentUIMessage } from './ui-messages.js';
+import type { DesignAgentUIMessage, Attachment } from './ui-messages.js';
 import { spawnVerifier, formatVerdictForMain, type VerifierResult } from './verifier.js';
+import { wrapPendingUserMessages } from './loop-helpers/user-message-queue.js';
+import { recoverPartialState } from './loop-helpers/abort-recovery.js';
+import { inlineAttachmentsIntoText } from './attachment-inline.js';
+import { getRegisteredSnips } from './tools/snip.js';
 
 export interface UseAgentChatOptions {
   projectId: string;
@@ -86,6 +90,21 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
       designSystemName: opts.designSystemName,
       designSystemTokensCss: opts.designSystemTokensCss,
       onTodosUpdate,
+      // §2.1 cross-W wire: W2's snip tool registry → W1's prepareStep snip
+      // applier. Bound by closure to the active chat id; falls back to no-op
+      // when there's no active chat (lazy-create still in flight). Maps W2's
+      // RegisteredSnip shape ({fromId, toId}) to W1's expected shape
+      // ({from, to}) — same concept, slightly different field names that
+      // emerged because W2 + W1 worked in parallel.
+      getRegisteredSnips: () => {
+        const cid = chatIdRef.current;
+        if (!cid) return [];
+        return getRegisteredSnips(cid).map((s) => ({
+          from: s.fromId,
+          to: s.toId,
+          reason: s.reason,
+        }));
+      },
     });
     return new DirectChatTransport({ agent });
   }, [
@@ -150,6 +169,16 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
     });
   }, []);
 
+  // ─── §2.2 pending user-message queue ───────────────────────────────────
+  //
+  // When the user submits while the agent is mid-stream, we queue the text
+  // here instead of dropping it onto the underlying chat (which would race
+  // the stream and behave unpredictably). At each turn boundary (onFinish),
+  // we drain the queue into a single follow-up message wrapped in
+  // <user_message> tags so the model can distinguish queued user input
+  // from tool feedback. Verbatim wrapping in `wrapPendingUserMessages`.
+  const pendingUserMessagesRef = useRef<string[]>([]);
+
   // CRITICAL: useChat internally uses useRef + only re-creates the Chat instance when
   // `options.chat` or `options.id` changes (see node_modules/@ai-sdk/react/dist/index.mjs
   // line 184-190). Changing `transport` alone does NOT recreate Chat → old transport
@@ -162,7 +191,19 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
   const chat = useChat<DesignAgentUIMessage>({
     id: `chat-${opts.projectId}-${opts.chatId ?? 'pending'}-${keyTick}-${modelTick}`,
     transport,
-    onFinish: ({ messages }) => persistThread(messages),
+    onFinish: ({ messages }) => {
+      persistThread(messages);
+      // Drain pending queue. Use chatRef to call the latest sendMessage.
+      const pending = pendingUserMessagesRef.current;
+      if (pending.length > 0) {
+        const wrapped = wrapPendingUserMessages(pending);
+        pendingUserMessagesRef.current = [];
+        if (wrapped.length > 0) {
+          // Fire async — onFinish doesn't return a Promise so we can't await.
+          void chatRef.current.sendMessage({ text: wrapped });
+        }
+      }
+    },
   });
 
   const { setMessages } = chat;
@@ -184,11 +225,105 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
   // This closes the race where the user submits, sees the streaming reply,
   // then refreshes before onFinish fires — without this, the user message
   // and assistant reply both vanish on next mount.
+  //
+  // §2.2 Mid-turn user inputs: when chat.status === 'streaming' we queue
+  // the text in pendingUserMessagesRef instead of forwarding to underlying
+  // sendMessage. The queue is drained in onFinish into one combined
+  // <user_message>-wrapped follow-up.
   const sendMessage = useCallback<typeof chat.sendMessage>(
     ((...args: Parameters<typeof chat.sendMessage>) => {
       const c = chatRef.current;
-      const promise = c.sendMessage(...args);
+      const isStreaming = c.status === 'streaming' || c.status === 'submitted';
+
+      // §4.3 cross-W wire: extract optional `attachments` field from the
+      // first arg (custom extension on top of AI SDK's sendMessage shape;
+      // typed via DesignAgentUIMessage's Attachment type). When present,
+      // inline them into the text body using <skill-attachment> /
+      // <design-system-guide> XML wrappers (W3 helper) so the LLM sees
+      // skill content inline. Strip `attachments` from the arg before
+      // forwarding to the AI SDK (it doesn't expect non-standard fields).
+      //
+      // F2: also REMEMBER the original attachments so we can tack them
+      // onto the just-pushed user UIMessage after sendMessage. ChatMsg
+      // reads `message.attachments` to render skill chips — without this,
+      // a chat reload (which round-trips the message blob through the
+      // worker) would render the inlined text but lose the chip.
+      const firstRaw = args[0] as { text?: unknown; attachments?: Attachment[] } | undefined;
+      let normalizedArgs: Parameters<typeof chat.sendMessage> = args;
+      let attachmentsToPersist: Attachment[] | null = null;
+      if (
+        firstRaw != null &&
+        typeof firstRaw === 'object' &&
+        Array.isArray(firstRaw.attachments) &&
+        firstRaw.attachments.length > 0 &&
+        typeof firstRaw.text === 'string'
+      ) {
+        const inlinedText = inlineAttachmentsIntoText(firstRaw.text, firstRaw.attachments);
+        const { attachments: persisted, ...rest } = firstRaw;
+        attachmentsToPersist = persisted ?? null;
+        const replaced = { ...rest, text: inlinedText };
+        // Re-build args[]: use unknown cast to bypass the SDK's tuple
+        // overload constraints (we pass strictly the shape it accepts —
+        // the cast only sheds our custom `attachments` field).
+        normalizedArgs = [replaced, args[1]] as unknown as Parameters<typeof chat.sendMessage>;
+      }
+
+      // We only queue plain {text} sends — attachments / parts go through
+      // immediately because re-wrapping non-text content into <user_message>
+      // text would discard structured attachments. In practice the user-
+      // queue case is "user types more while agent runs"; attachments are
+      // rare in that flow.
+      const first = normalizedArgs[0] as { text?: unknown } | undefined;
+      const isPlainTextSend =
+        first != null &&
+        typeof first === 'object' &&
+        typeof (first as { text?: unknown }).text === 'string' &&
+        Object.keys(first).every((k) => k === 'text');
+
+      if (isStreaming && isPlainTextSend) {
+        const text = (first as { text: string }).text;
+        pendingUserMessagesRef.current.push(text);
+        // Resolve immediately so the UI thinks send succeeded; the queued
+        // text will land via onFinish flush.
+        return Promise.resolve(undefined as never);
+      }
+
+      // §2.10 — half-state recovery: if a previous turn was aborted with
+      // chat.stop() and left tool parts in non-terminal states, synthesize
+      // aborted tool_results so the next API call sees a closed shape.
+      // setMessages is a no-op when nothing changed (recoverPartialState
+      // only flips state on tool-X parts in input-streaming/-available).
+      const { messages: recovered, recovered: didRecover } = recoverPartialState(c.messages);
+      if (didRecover) {
+        c.setMessages(recovered as typeof c.messages);
+      }
+
+      const promise = c.sendMessage(...normalizedArgs);
       // chat.messages now includes the freshly pushed user message.
+      // F2: stamp the original attachments[] onto the just-pushed user
+      // message so ChatMsg can render skill chips both during this session
+      // AND after a reload (the persist round-trip carries the field).
+      if (attachmentsToPersist && attachmentsToPersist.length > 0) {
+        c.setMessages((current) => {
+          // Find the LAST user message — that's the one we just pushed.
+          let lastUserIdx = -1;
+          for (let i = current.length - 1; i >= 0; i -= 1) {
+            if (current[i]?.role === 'user') {
+              lastUserIdx = i;
+              break;
+            }
+          }
+          if (lastUserIdx < 0) return current;
+          const target = current[lastUserIdx]!;
+          const updated: DesignAgentUIMessage = {
+            ...target,
+            attachments: attachmentsToPersist,
+          };
+          const next = current.slice();
+          next[lastUserIdx] = updated as (typeof current)[number];
+          return next;
+        });
+      }
       persistThread(c.messages);
       return promise;
     }) as typeof chat.sendMessage,

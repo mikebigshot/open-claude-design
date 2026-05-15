@@ -196,9 +196,7 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
       // 时 active 设 null。
       // 强制按 createdAt asc 排序，跟 add_chat 追加到末尾的语义一致 ——
       // 用户感知：最早的 chat 在最左，新 chat 出现在右侧 + 加号旁。
-      const sortedChats = [...action.chats].sort((a, b) =>
-        a.createdAt.localeCompare(b.createdAt),
-      );
+      const sortedChats = [...action.chats].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       let nextActive: string | null;
       if (action.activeChatId !== undefined) {
         nextActive = action.activeChatId;

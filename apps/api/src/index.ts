@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
+import { assetsRoute } from './routes/assets.js';
 import { chatsRoute } from './routes/chats.js';
 import { commentsRoute } from './routes/comments.js';
 import { filesCopyRoute } from './routes/files-copy.js';
@@ -52,6 +53,7 @@ app.route('/api/projects', filesGrepRoute);
 app.route('/api/projects', chatsRoute);
 app.route('/api/projects', messagesRoute);
 app.route('/api/projects', commentsRoute);
+app.route('/api/projects', assetsRoute);
 app.route('/api/util', utilFetchRoute);
 
 app.onError((err, c) => {

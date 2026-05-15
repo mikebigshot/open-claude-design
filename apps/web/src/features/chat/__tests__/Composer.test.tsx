@@ -4,12 +4,14 @@
 // interaction surfaces (typing, send keystroke, chip remove, stop button).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { ThemeProvider } from 'styled-components';
 
 import { Composer } from '../Composer';
 import { theme } from '@/theme/theme';
+import { I18nProvider } from '@/i18n';
 import type { ChipPrim } from '../types';
+import type { Attachment } from '../ui-messages';
 
 function renderComposer(props: Partial<React.ComponentProps<typeof Composer>> = {}): {
   onSubmit: ReturnType<typeof vi.fn>;
@@ -24,18 +26,20 @@ function renderComposer(props: Partial<React.ComponentProps<typeof Composer>> = 
   const onChipsChange = vi.fn();
   const onModelChange = vi.fn();
   render(
-    <ThemeProvider theme={theme}>
-      <Composer
-        projectId="p1"
-        value=""
-        onChange={onChange}
-        onSubmit={onSubmit}
-        onStop={onStop}
-        onChipsChange={onChipsChange}
-        onModelChange={onModelChange}
-        {...props}
-      />
-    </ThemeProvider>,
+    <I18nProvider initial="en">
+      <ThemeProvider theme={theme}>
+        <Composer
+          projectId="p1"
+          value=""
+          onChange={onChange}
+          onSubmit={onSubmit}
+          onStop={onStop}
+          onChipsChange={onChipsChange}
+          onModelChange={onModelChange}
+          {...props}
+        />
+      </ThemeProvider>
+    </I18nProvider>,
   );
   return { onSubmit, onChange, onStop, onChipsChange, onModelChange };
 }
@@ -164,5 +168,128 @@ describe('Composer', () => {
     expect(
       screen.queryAllByRole('button').filter((b) => b.textContent?.match(/(Sonnet|Opus|Haiku)/)),
     ).toHaveLength(0);
+  });
+});
+
+// ───── Skill attach flow ─────
+//
+// Spec §4.3 step 1-6: user clicks "Add context" → menu shows "Attach skill"
+// (active, not SOON) → submenu lists 4 built-in skills → picking one attaches
+// a chip [skill: <name> ×] above the textarea. Multiple skills can stack.
+// On Send, attachments[] is forwarded to onSubmit and the chips clear.
+
+describe('Composer skill attach', () => {
+  it('Add context menu shows an active "Attach skill" item (no SOON badge)', () => {
+    renderComposer();
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    // The menu is rendered as role=menu by ImportPopover.
+    const menu = screen.getByRole('menu');
+    const skillItem = within(menu).getByRole('menuitem', { name: /Attach skill/i });
+    expect(skillItem).toBeInTheDocument();
+    expect(skillItem).not.toBeDisabled();
+    // No SOON badge inside this row.
+    expect(within(skillItem).queryByText(/SOON/i)).toBeNull();
+  });
+
+  it('clicking "Attach skill" lists the four built-in skill names', () => {
+    renderComposer();
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    // The submenu lists the 4 built-in skills by their frontmatter `name`.
+    const picker = screen.getByRole('menu', { name: /skill picker/i });
+    expect(within(picker).getByRole('menuitem', { name: /Frontend design/i })).toBeInTheDocument();
+    expect(
+      within(picker).getByRole('menuitem', { name: /Interactive prototype/i }),
+    ).toBeInTheDocument();
+    expect(within(picker).getByRole('menuitem', { name: /Make a deck/i })).toBeInTheDocument();
+    expect(within(picker).getByRole('menuitem', { name: /Wireframe/i })).toBeInTheDocument();
+  });
+
+  it('picking a skill renders a chip "skill: <name>" with a remove button', () => {
+    renderComposer();
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Make a deck/i })));
+    // Skill chip should be present.
+    const chip = screen.getByTestId('skill-chip-Make a deck');
+    expect(chip).toHaveTextContent(/skill/i);
+    expect(chip).toHaveTextContent(/Make a deck/);
+    // Submenu auto-closes after pick.
+    expect(screen.queryByRole('menu', { name: /skill picker/i })).toBeNull();
+    // Remove button is accessible.
+    expect(within(chip).getByLabelText(/Remove Make a deck/i)).toBeInTheDocument();
+  });
+
+  it('clicking the chip × removes the skill attachment', () => {
+    renderComposer();
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Wireframe/i })));
+    expect(screen.getByTestId('skill-chip-Wireframe')).toBeInTheDocument();
+    act(() => fireEvent.click(screen.getByLabelText(/Remove Wireframe/i)));
+    expect(screen.queryByTestId('skill-chip-Wireframe')).toBeNull();
+  });
+
+  it('multiple skills can be attached and stack as chips', () => {
+    renderComposer();
+    // Attach 1: Make a deck
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Make a deck/i })));
+    // Attach 2: Wireframe
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Wireframe/i })));
+    expect(screen.getByTestId('skill-chip-Make a deck')).toBeInTheDocument();
+    expect(screen.getByTestId('skill-chip-Wireframe')).toBeInTheDocument();
+  });
+
+  it('Send forwards skill attachments to onSubmit with full content from the registry', () => {
+    const { onSubmit } = renderComposer({ value: 'please make a deck' });
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Make a deck/i })));
+    act(() => fireEvent.click(screen.getByLabelText(/Send/i)));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const [pendingAttachments, skillAttachments] = onSubmit.mock.calls[0] as [
+      unknown[],
+      Attachment[] | undefined,
+    ];
+    expect(pendingAttachments).toEqual([]);
+    expect(skillAttachments).toBeDefined();
+    expect(skillAttachments).toHaveLength(1);
+    expect(skillAttachments![0]?.type).toBe('skill');
+    expect(skillAttachments![0]?.name).toBe('Make a deck');
+    // The chip's content body must be the actual SKILL.md body (post-frontmatter)
+    // — pulled from the registry. Don't assert exact length, just non-empty.
+    expect(typeof skillAttachments![0]?.content).toBe('string');
+    expect((skillAttachments![0]?.content ?? '').length).toBeGreaterThan(10);
+    expect(skillAttachments![0]?.id).toBeTruthy();
+  });
+
+  it('after Send, skill chips clear from the composer', () => {
+    const { onSubmit } = renderComposer({ value: 'go' });
+    act(() => fireEvent.click(screen.getByRole('button', { name: /Add context/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Attach skill/i })));
+    act(() => fireEvent.click(screen.getByRole('menuitem', { name: /Make a deck/i })));
+    expect(screen.getByTestId('skill-chip-Make a deck')).toBeInTheDocument();
+    act(() => fireEvent.click(screen.getByLabelText(/Send/i)));
+    expect(onSubmit).toHaveBeenCalled();
+    // chip cleared post-send
+    expect(screen.queryByTestId('skill-chip-Make a deck')).toBeNull();
+  });
+
+  it('empty skill attachment list still allows sending (onSubmit fires with [] for both)', () => {
+    const { onSubmit } = renderComposer({ value: 'hi' });
+    act(() => fireEvent.click(screen.getByLabelText(/Send/i)));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const [pendingAttachments, skillAttachments] = onSubmit.mock.calls[0] as [
+      unknown[],
+      Attachment[] | undefined,
+    ];
+    expect(pendingAttachments).toEqual([]);
+    // Either undefined or empty array — both valid "no skills attached" shapes.
+    expect(skillAttachments === undefined || skillAttachments.length === 0).toBe(true);
   });
 });

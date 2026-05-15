@@ -62,20 +62,20 @@ OmeletteService (thin LLM proxy + tool backend)
 
 #### Key observations
 
-| Dimension | What's actually shipping |
-|---|---|
-| Main-app frontend | Vite + React Router v6 + styled-components; the code editor is a native `<textarea>` plus hand-rolled `<div>` line numbers — no Monaco, no CodeMirror |
-| Backend protocol | Connect / gRPC-Web + Protobuf; service name `anthropic.omelette.api.v1alpha.OmeletteService` |
-| Agent tool protocol | MCP (Model Context Protocol) — captured a complete `tools/list` payload with the `defer_loading` field; third-party MCP servers really do plug in |
-| Tool routing | 30+ tools dispatched across 9 buckets: cloud RPC (EditFile / GetFile / …) / local FSA (local_*) / iframe DOM (show_html / eval_js / screenshot) / pure client logic (snip / update_todos) / spawned sub-agent / third-party MCP / LLM-built-in (web_search / web_fetch) |
-| Verifier sub-agent | Shares the main agent's **system prompt + toolset + history**; the entire fork is just a role-reset prompt stuffed into the fork tool_result + a `::verifier` suffix on the sessionUUID + max_tokens halved |
-| Preview iframe | Each project on its own subdomain `{project-uuid}.claudeusercontent.com`; the main site sets CSP `default-src 'none'; frame-ancestors 'none'`; preview tokens are 4 segments: `{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}` |
-| Generated-artifact runtime | React **18.3.1** + Babel Standalone **7.29.0** (UMD, integrity-hash pinned) + inline `style={{...}}` JS objects + Google Fonts + multi-JSX `<script type="text/babel" src="*.jsx">` mounted on the global window |
-| Tweaks protocol | Artifacts embed `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` blocks + `EDIT_STYLE` postMessage to write back live, without re-running the model |
-| Client-authoritative storage | The browser holds the full chats / messages / contentBlocks / tool I/O / viewState / assets manifest, and pushes a complete snapshot back via `UpdateProjectData`. **Every tool call's input/output is persisted** |
-| `done` compound op | Triggers a chain of EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData |
-| Streaming | Not native Anthropic SSE — OmeletteService re-wraps it as custom frames: `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers` |
-| Local-folder bridge | File System Access API + 4 `local_*` tools (local_ls / local_read / local_grep / local_copy_to_project); local files **never** reach OmeletteService — they only appear in the LLM context |
+| Dimension                    | What's actually shipping                                                                                                                                                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main-app frontend            | Vite + React Router v6 + styled-components; the code editor is a native `<textarea>` plus hand-rolled `<div>` line numbers — no Monaco, no CodeMirror                                                                                                                     |
+| Backend protocol             | Connect / gRPC-Web + Protobuf; service name `anthropic.omelette.api.v1alpha.OmeletteService`                                                                                                                                                                              |
+| Agent tool protocol          | MCP (Model Context Protocol) — captured a complete `tools/list` payload with the `defer_loading` field; third-party MCP servers really do plug in                                                                                                                         |
+| Tool routing                 | 30+ tools dispatched across 9 buckets: cloud RPC (EditFile / GetFile / …) / local FSA (local\_\*) / iframe DOM (show_html / eval_js / screenshot) / pure client logic (snip / update_todos) / spawned sub-agent / third-party MCP / LLM-built-in (web_search / web_fetch) |
+| Verifier sub-agent           | Shares the main agent's **system prompt + toolset + history**; the entire fork is just a role-reset prompt stuffed into the fork tool_result + a `::verifier` suffix on the sessionUUID + max_tokens halved                                                               |
+| Preview iframe               | Each project on its own subdomain `{project-uuid}.claudeusercontent.com`; the main site sets CSP `default-src 'none'; frame-ancestors 'none'`; preview tokens are 4 segments: `{file_content_hash}.{org_uuid}.{user_uuid}.{timestamp}`                                    |
+| Generated-artifact runtime   | React **18.3.1** + Babel Standalone **7.29.0** (UMD, integrity-hash pinned) + inline `style={{...}}` JS objects + Google Fonts + multi-JSX `<script type="text/babel" src="*.jsx">` mounted on the global window                                                          |
+| Tweaks protocol              | Artifacts embed `/*EDITMODE-BEGIN*/{JSON}/*EDITMODE-END*/` blocks + `EDIT_STYLE` postMessage to write back live, without re-running the model                                                                                                                             |
+| Client-authoritative storage | The browser holds the full chats / messages / contentBlocks / tool I/O / viewState / assets manifest, and pushes a complete snapshot back via `UpdateProjectData`. **Every tool call's input/output is persisted**                                                        |
+| `done` compound op           | Triggers a chain of EditFile + RecordAsset + GetFile + ListFiles + UpdateProjectData                                                                                                                                                                                      |
+| Streaming                    | Not native Anthropic SSE — OmeletteService re-wraps it as custom frames: `text_block` / `tool_delta` / `tool_block_complete` / `done` / `tokens` / `ratelimit_headers`                                                                                                    |
+| Local-folder bridge          | File System Access API + 4 `local_*` tools (local_ls / local_read / local_grep / local_copy_to_project); local files **never** reach OmeletteService — they only appear in the LLM context                                                                                |
 
 ### What Open Claude Design looks like
 
@@ -124,14 +124,14 @@ LLM provider (user BYOK, browser-direct, invisible to the worker)
 
 All three projects are open-source recreations of Claude Design. The split is mostly about **where the agent loop runs and where chat / files end up**.
 
-|  | Claude Design (original) | [open-codesign][ocod] | [nexu-io/open-design][nexu] | **Open Claude Design** |
-|---|---|---|---|---|
-| Form factor | Web (claude.ai) | Desktop (Electron) | Web app + local daemon | **Pure web + Cloudflare Workers** |
-| Where the agent loop runs | Browser tab | Inside the Electron main process, bundling [pi-ai] | The CLI you already have on disk (Codex / Cursor / Gemini / … 13 adapters) | **Browser tab (Vercel AI SDK ToolLoopAgent, BYOK)** |
-| Where chat / files live | Cloud (OmeletteService + content-addressed blobs) | Local SQLite + local filesystem | Local SQLite + local filesystem | **Cloudflare D1 + R2 (your account)** |
-| Need a local CLI / desktop shell? | No | Yes (Electron installer) | Yes (npm + one of 13 CLIs) | **No — open the page in a browser** |
-| Structural fidelity to the original | 100% | Medium (agent on a desktop runtime, not the web) | Medium (agent in the user's CLI, spawned by the daemon) | **High — agent in the browser + backend as storage, same shape as the original** |
-| License | Closed | MIT | Apache-2.0 | Apache-2.0 |
+|                                     | Claude Design (original)                          | [open-codesign][ocod]                              | [nexu-io/open-design][nexu]                                                | **Open Claude Design**                                                           |
+| ----------------------------------- | ------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Form factor                         | Web (claude.ai)                                   | Desktop (Electron)                                 | Web app + local daemon                                                     | **Pure web + Cloudflare Workers**                                                |
+| Where the agent loop runs           | Browser tab                                       | Inside the Electron main process, bundling [pi-ai] | The CLI you already have on disk (Codex / Cursor / Gemini / … 13 adapters) | **Browser tab (Vercel AI SDK ToolLoopAgent, BYOK)**                              |
+| Where chat / files live             | Cloud (OmeletteService + content-addressed blobs) | Local SQLite + local filesystem                    | Local SQLite + local filesystem                                            | **Cloudflare D1 + R2 (your account)**                                            |
+| Need a local CLI / desktop shell?   | No                                                | Yes (Electron installer)                           | Yes (npm + one of 13 CLIs)                                                 | **No — open the page in a browser**                                              |
+| Structural fidelity to the original | 100%                                              | Medium (agent on a desktop runtime, not the web)   | Medium (agent in the user's CLI, spawned by the daemon)                    | **High — agent in the browser + backend as storage, same shape as the original** |
+| License                             | Closed                                            | MIT                                                | Apache-2.0                                                                 | Apache-2.0                                                                       |
 
 [ocod]: https://github.com/OpenCoworkAI/open-codesign
 [nexu]: https://github.com/nexu-io/open-design

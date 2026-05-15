@@ -62,8 +62,7 @@ export const ar: Dict = {
   'home.importProgress': 'جارٍ الرفع {done}/{total}…',
   'home.importProgressWith': 'جارٍ الرفع {done}/{total}… ({current})',
   'home.importZipAria': 'استيراد ملف zip للمشروع',
-  'home.importToastSkipped':
-    'تم استيراد {uploaded} ملفًا. تم تخطي {skipped} (ثنائي / كبير الحجم).',
+  'home.importToastSkipped': 'تم استيراد {uploaded} ملفًا. تم تخطي {skipped} (ثنائي / كبير الحجم).',
   'home.importToastOk': 'تم استيراد {uploaded} ملفًا إلى "{name}".',
   'home.importFailed': 'فشل الاستيراد',
 
@@ -107,8 +106,7 @@ export const ar: Dict = {
   'header.settings': 'الإعدادات',
 
   'workspace.chatToolsAria': 'علامات تبويب المحادثة والأدوات',
-  'workspace.dropFilesHint':
-    '↓ اسقط الملفات هنا — سيستخدمها Atelier كسياق',
+  'workspace.dropFilesHint': '↓ اسقط الملفات هنا — سيستخدمها Atelier كسياق',
   'workspace.errorMissingId': 'معرّف المشروع مفقود.',
   'workspace.errorNotFoundTitle': 'المشروع غير موجود',
   'workspace.errorNotFoundLine1': 'لم نتمكن من العثور على مشروع بالمعرّف {id}.',
@@ -159,8 +157,7 @@ export const ar: Dict = {
   'fileTree.title': 'ملفات التصميم',
   'fileTree.todosLabel': 'المهام',
   'fileTree.empty': 'لا يحتوي المشروع على أي ملفات بعد.',
-  'fileTree.emptyHint':
-    'انقر على زر + لبدء محادثة جديدة واطلب من Atelier إنشاء ملفات.',
+  'fileTree.emptyHint': 'انقر على زر + لبدء محادثة جديدة واطلب من Atelier إنشاء ملفات.',
   'fileTree.errorLoad': 'تعذّر تحميل الملفات: {error}',
   'fileTree.newFile': 'ملف جديد',
   'fileTree.newFolder': 'مجلد جديد',
@@ -240,19 +237,33 @@ export const ar: Dict = {
 
   'chat.tool.writing': 'يكتب',
   'chat.tool.reading': 'يقرأ',
+  'chat.tool.editing': 'يحرر',
   'chat.tool.listing': 'يسرد',
+  'chat.tool.copying': 'ينسخ',
+  'chat.tool.deleting': 'يحذف',
+  'chat.tool.viewing': 'يعرض',
+  'chat.tool.fetching': 'يجلب',
+  'chat.tool.grep': 'بحث',
   'chat.tool.done': 'تم',
+  'chat.tool.snipping': 'قص',
+  'chat.tool.todos': 'مهام',
+  'chat.tool.registering': 'موارد',
+  'chat.tool.skill': 'مهارة',
+  'chat.tool.verifying': 'تحقق',
+  'chat.tool.feedback': 'تعليق',
+  'chat.tool.questioning': 'يسأل',
+  'chat.tool.screenshotting': 'لقطة',
+  'chat.tool.evaluating': 'تنفيذ',
+  'chat.tool.logs': 'سجلات',
 
-  'comments.errorLoad':
-    'تعذّر تحميل التعليقات: {error}. أعد تحميل الصفحة للمحاولة مرة أخرى.',
+  'comments.errorLoad': 'تعذّر تحميل التعليقات: {error}. أعد تحميل الصفحة للمحاولة مرة أخرى.',
   'comments.errorPartial':
     'تعذّر إعادة تحميل جميع التعليقات: {error}. القائمة أدناه قد تكون غير مكتملة.',
   'comments.errorReload':
     'الدبابيس الجديدة التي تنشئها الآن ستظل تحاول الحفظ، ولكن الدبابيس السابقة (إن وجدت) لم يتم جلبها.',
   'comments.empty.intro': 'لا توجد تعليقات بعد. انقر على أداة ',
   'comments.empty.toolName': 'تعليق',
-  'comments.empty.instruction':
-    ' في شريط الأدوات، ثم انقر في أي مكان في المعاينة لإسقاط دبوس.',
+  'comments.empty.instruction': ' في شريط الأدوات، ثم انقر في أي مكان في المعاينة لإسقاط دبوس.',
   'comments.deletePinAria': 'حذف الدبوس {n}',
   'comments.selectPinAria': 'تحديد التعليق {n}',
   'comments.selectedCount': '{n} محدد',
@@ -269,8 +280,15 @@ export const ar: Dict = {
   'import.option.figma': 'ملف Figma',
   'import.option.uploadScreenshots': 'رفع لقطات الشاشة',
   'import.option.designSystems': 'تصفح أنظمة التصميم',
+  'import.option.attachSkill': 'إرفاق مهارة',
   'import.soonBadge': 'قريبًا',
   'import.comingSoon': 'قريبًا',
+
+  'skillPicker.menuAria': 'منتقي المهارة',
+  'skillPicker.empty': 'لا توجد مهارات متاحة',
+
+  'skillChip.kindLabel': 'مهارة',
+  'skillChip.removeAria': 'إزالة {name}',
 
   'modelDropdown.noKey': 'لا مفتاح',
   'modelDropdown.addKeyFirst': 'أضف مفتاح {provider} أولًا',

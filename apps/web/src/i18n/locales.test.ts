@@ -2,17 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { en } from './locales/en';
 import { LOCALES, LOCALE_LABEL, RTL_LOCALES, type Dict, type Locale } from './types';
 
-const EXPECTED_LOCALES: Locale[] = [
-  'en',
-  'zh-CN',
-  'zh-TW',
-  'es-ES',
-  'fr',
-  'ru',
-  'ar',
-  'ja',
-  'ko',
-];
+const EXPECTED_LOCALES: Locale[] = ['en', 'zh-CN', 'zh-TW', 'es-ES', 'fr', 'ru', 'ar', 'ja', 'ko'];
 
 const EXPECTED_RTL: Locale[] = ['ar'];
 

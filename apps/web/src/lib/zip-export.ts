@@ -38,10 +38,7 @@ function isBinaryMime(mime: FileMimeType): boolean {
  * lost their original formatting (indentation, key order, trailing newline),
  * and binary files got UTF-8 mangled (e.g. 0x89 PNG magic → 0xEF 0xBF 0xBD).
  */
-export async function bundleProjectAsZip(
-  projectId: string,
-  projectName: string,
-): Promise<Blob> {
+export async function bundleProjectAsZip(projectId: string, projectName: string): Promise<Blob> {
   const list = await api<ListFilesResponse>(`/api/projects/${encodeURIComponent(projectId)}/files`);
   const zip = new JSZip();
 

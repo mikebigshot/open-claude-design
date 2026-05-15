@@ -4,6 +4,7 @@ import type { Env } from '../../src/index.js';
 // SQL inlined at write time to avoid readFileSync (not available in Workers runtime).
 // Source: apps/api/drizzle/migrations/0001_init.sql + 0002_messages.sql + 0003_comments.sql
 // + 0004_comments_file_path.sql + 0005_messages_composite_pk.sql + 0006_chats.sql
+// + 0007_assets.sql.
 // (composite PK + chat_id folded directly into the messages CREATE TABLE since
 // this DDL only runs on a fresh in-memory D1 — no live recreate dance needed in
 // tests).
@@ -93,7 +94,27 @@ CREATE TABLE IF NOT EXISTS comments (
   FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_comments_project ON comments (project_id, n)
+CREATE INDEX IF NOT EXISTS idx_comments_project ON comments (project_id, n);
+
+CREATE TABLE IF NOT EXISTS assets (
+  id          TEXT NOT NULL,
+  project_id  TEXT NOT NULL,
+  asset       TEXT NOT NULL,
+  path        TEXT NOT NULL,
+  subtitle    TEXT,
+  viewport_w  INTEGER,
+  viewport_h  INTEGER,
+  status      TEXT NOT NULL DEFAULT 'needs-review' CHECK (status IN ('needs-review','approved','changes-requested')),
+  group_      TEXT,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (project_id, id),
+  FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assets_project_asset_path ON assets (project_id, asset, path);
+
+CREATE INDEX IF NOT EXISTS idx_assets_project_group ON assets (project_id, group_)
 `;
 
 let migrated = false;

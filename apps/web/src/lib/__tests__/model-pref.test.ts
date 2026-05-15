@@ -1,12 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MODELS } from '@open-design/contracts';
-import {
-  DEFAULT_MODEL,
-  getModelId,
-  getModelPref,
-  setModelId,
-  setModelPref,
-} from '../model-pref';
+import { DEFAULT_MODEL, getModelId, getModelPref, setModelId, setModelPref } from '../model-pref';
 
 describe('model-pref (multi-provider)', () => {
   beforeEach(() => localStorage.clear());

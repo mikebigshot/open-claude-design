@@ -60,6 +60,13 @@ You **must not** call \`verification_feedback\` yourself — that tool is the ve
 
 const NO_CLAUDE_MD = `This project has no \`CLAUDE.md\`. If the user wants persistent instructions for every chat in this project, they can create a \`CLAUDE.md\` file at the project root — only the root is read; subfolders are ignored.`;
 
+// v2 capture (research/claude-design-v2/artifacts/system-prompt/block-1-context.md):
+// the host appends this paragraph so the agent recognises the trim sigils its
+// context-management pipeline inserts — and crucially, does not echo them
+// back into its own output. Pairs with the in-loop snip / `<system-reminder>`
+// nudge that lives elsewhere in the W1 prepareStep callback.
+const TRIM_TAGS_NOTE = `Note: Parts of this conversation may be automatically trimmed to fit the context window. You may see <dropped_messages> tags where earlier messages were removed entirely, <trimmed>, [tool call: …], <trimmed_tool_result>, and <trimmed_image> markers where content was shortened, and <orphaned_tool_call> / <orphaned_tool_result> tags where a tool call or its result survived without its partner. These are inserted by the system — do not reproduce or emit these tags in your responses.`;
+
 // Emitted when the user explicitly picks "None" in the Design System picker.
 // Distinct from "no design system was provided" (default Open Design tokens
 // path) — `'none'` means the user opted out of a system entirely and wants
@@ -99,5 +106,7 @@ ${OUTPUT_FORMAT_OVERRIDE}
 
 ${VERIFIER_GUIDANCE}
 
-<user-email-domain>${userEmailDomain}</user-email-domain>`;
+<user-email-domain>${userEmailDomain}</user-email-domain>
+
+${TRIM_TAGS_NOTE}`;
 }
