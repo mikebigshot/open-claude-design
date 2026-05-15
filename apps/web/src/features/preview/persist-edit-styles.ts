@@ -86,7 +86,7 @@ function applyInlineStyleHtml(
 // ───────── JSX branch ─────────
 
 // Match `style={{ ... }}` — `[^}]*` keeps it simple; nested braces inside style
-// values (e.g. `style={{ x: foo() }}`) would break this, but MVP source comes
+// values (e.g. `style={{ x: foo() }}`) would break this, but source comes
 // from agent-generated artifacts that use literal string values.
 const JSX_STYLE_RE = /\sstyle\s*=\s*\{\{([^}]*)\}\}/;
 

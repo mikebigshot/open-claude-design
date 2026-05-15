@@ -1,7 +1,7 @@
 // Add-context popover (mirrors prototype `proto-chat.jsx` import popover).
 //
-// MVP only enables "Upload screenshots" — the other 4 options render disabled
-// with a "Coming soon" tooltip.
+// Currently only "Upload screenshots" is enabled — the other 4 options render
+// disabled with a "Coming soon" tooltip.
 //
 // Upload flow（跟 Composer paste 路径统一）：
 // 1. FileReader → dataURL → onAttachmentAdd 立即在 composer 上方显示 thumbnail

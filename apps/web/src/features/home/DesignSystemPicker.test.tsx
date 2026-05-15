@@ -1,6 +1,6 @@
 // DesignSystemPicker — interaction unit tests.
 //
-// Pins the "None is selectable" behaviour so a future MVP-cleanup pass that
+// Pins the "None is selectable" behaviour so a future cleanup pass that
 // reverts to the old enabled=false won't silently regress: None must be a
 // real option in the listbox (not aria-disabled, no "Coming soon" tooltip,
 // click + keyboard activate it). Other 3 disabled placeholders

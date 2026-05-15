@@ -1,5 +1,5 @@
 // eval_js_user_view — main-agent equivalent of eval_js. Targets the user's
-// preview iframe (not the verifier's own). For our MVP both ride the same
+// preview iframe (not the verifier's own). Both ride the same
 // iframe; the distinction lives in description + name.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

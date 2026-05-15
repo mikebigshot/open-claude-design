@@ -1,4 +1,4 @@
-// D1 查询 helpers。MVP 用原生 prepared statements；如果未来引入 drizzle-orm，
+// D1 查询 helpers。当前用原生 prepared statements；如果未来引入 drizzle-orm，
 // 可以替换实现但保持函数签名。
 //
 // 行类型见 ../../drizzle/schema.ts。
@@ -372,7 +372,7 @@ export async function listMessages(
  * ReplaceMessages —— 整 thread 替换：DELETE 旧的（限定 chatId），按数组顺序写入新的。
  *
  * 用 D1 batch 实现单 round-trip 原子性（D1 batch 内是 implicit transaction）。
- * MVP 阶段够用：thread 长度 < 数百，bulk INSERT 一次批写完。
+ * thread 长度 < 数百时够用：bulk INSERT 一次批写完。
  *
  * Task 2 后只删该 chatId 范围内的旧 message，不影响 project 下其他 chat 的 thread。
  */

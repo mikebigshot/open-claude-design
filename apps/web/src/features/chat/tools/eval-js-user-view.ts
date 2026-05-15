@@ -1,5 +1,5 @@
 // eval_js_user_view — main-only sibling of eval_js. Operates on the USER's
-// preview pane (not the verifier's iframe). For our MVP both surfaces the same
+// preview pane (not the verifier's iframe). Both surfaces share the same
 // iframe per chat; the distinction lives in name + description so the LLM
 // picks the right tool. This stays consistent with v2 protocol.
 //

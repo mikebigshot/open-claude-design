@@ -202,7 +202,7 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
   // ref. Budget resets in onFinish so each successful turn refreshes it.
   // §2.3 schema-rejection: detected here too but the wiring can only WARN —
   // truly removing a tool from `makeTools()` would require recreating the
-  // agent. Surfacing the bad tool name to the user is the MVP affordance.
+  // agent. Surfacing the bad tool name to the user is the current affordance.
   const timeoutRetryRef = useRef(makeTimeoutRetryHandler({ max: 2 }));
 
   const chat = useChat<DesignAgentUIMessage>({

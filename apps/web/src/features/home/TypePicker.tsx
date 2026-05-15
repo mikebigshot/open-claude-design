@@ -1,5 +1,5 @@
 // 项目类型 4 tab —— Prototype / Slide deck / From template / Other
-// MVP: Prototype + Slide deck enabled. Picking "Slide deck" creates the
+// Currently enabled: Prototype + Slide deck. Picking "Slide deck" creates the
 // project with type='slide_deck' AND seeds the Composer with the
 // "Make a deck" skill so the agent enters deck mode without the user
 // needing to explicitly invoke it.

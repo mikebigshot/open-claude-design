@@ -60,6 +60,7 @@ npm run format
 **单个测试文件**：`cd apps/web && npx vitest run path/to/file.test.ts`
 **watch 模式**：`npm run test:watch --workspace=@open-design/web`
 **API 集成测试**：`npm run test:integration --workspace=@open-design/api`
+**provision / deploy**：`npm run cf:provision`（首次创建远端 D1 + R2）、`npm run deploy`（worker + vendor + Pages 一把梭）
 
 本地 API 说明：
 
@@ -67,7 +68,9 @@ npm run format
 - `apps/api/.dev.vars.example` 当前没有必填 secret；本地 D1/R2 走 Wrangler local state
 - `apps/api/wrangler.toml` 的 `database_id = "TODO_FILL_AFTER_CREATE"` 本地 dev 不需要替换；远端部署前跑 `npm run cf:provision`
 - `ALLOWED_ORIGINS` 默认是 `http://localhost:5173`；跨域部署时改 worker vars
-- Web 端可用 `VITE_API_BASE` 指向异源 worker；`VITE_VENDOR_RUNTIME=true` 会让 iframe runtime 从同源 `/vendor` 读 React/Babel，需先 `npm run vendor --workspace=@open-design/web`
+- Web 端可用 `VITE_API_BASE` 指向异源 worker；前端所有 `/api/*` 调用都通过 [`apps/web/src/lib/api.ts`](apps/web/src/lib/api.ts) 的 `buildUrl(path)` 拼前缀，新加调 worker 的代码必须沿用，否则跨域部署会断
+- `VITE_VENDOR_RUNTIME=true` 会让 iframe runtime 从同源 `/vendor` 读 React/Babel，需先 `npm run vendor --workspace=@open-design/web`
+- D1 schema 在 [`apps/api/drizzle/migrations/`](apps/api/drizzle/migrations/)，加新 migration 后**必须**同步更新 `apps/api/package.json` 里 `db:migrate:local` / `db:migrate:remote` 两条命令的文件列表
 
 ## 仓库架构
 
@@ -80,14 +83,19 @@ apps/
       chat/         ToolLoopAgent、useChat、tools、system prompt、verifier
       preview/      iframe bridge + Tweaks/Comment/Edit/Draw
       workspace/    Header、FileTree、FileSourceView、Toolbar、ChatTabBar
-      home/         项目列表、创建流、examples、zip import
+      home/         项目列表、创建流（含 Slide deck 项目类型 → 自动 seed make-a-deck skill）、examples、zip import
       settings/     BYOK key modal/form
+    src/lib/        api buildUrl、byok-key、iframe-bridge、html/zip export、claude-complete RPC
+    src/skills/     内置 skill 注册（registry + built-in/*/SKILL.md，Vite glob）
+    src/state/      workspace reducer + Action union（types.ts 是入口）
   api/              Hono on Cloudflare Workers + D1 + R2 — 存储 REST API
+    drizzle/migrations/   D1 schema（0001-0007，按文件名顺序应用）
 packages/
   contracts/        前后端共享 HTTP API 契约、provider/model 列表
   design-tokens/    color / typography token（TS + CSS 双源）
   iframe-runtime/   注入预览 iframe 的 srcdoc、overlay、Tweaks bridge
 e2e/                Playwright 端到端套件 + OpenRouter mock/BYOK fixtures
+  specs/            main-flow / tools-overlay / files-and-source / persistence / error-paths / examples-flow / verifier-fork / deck-ppt-alignment
 ```
 
 ## 关键架构事实
@@ -113,7 +121,11 @@ BYOK 是多 provider 的：
 
 - 文件：`write_file`、`read_file`、`list_files`、`str_replace_based_edit_tool`、`delete_file`、`copy_files`、`grep`
 - 辅助：`view_image`、`web_fetch`、`invoke_skill`、`update_todos`、`done`
-- verifier：`fork_verifier_agent`、`verification_feedback`
+- v2 通用：`snip`、`questions_v2`、`register_assets`
+- 导出 / 呈现：`open_for_print`、`present_fs_item_for_download`、`gen_pptx`、`super_inline_html`
+- verifier：`fork_verifier_agent`、`verification_feedback`；verifier-only 还有 `eval_js`、`screenshot`、`multi_screenshot`、`get_webview_logs`
+
+内置 skills（[`apps/web/src/skills/built-in/`](apps/web/src/skills/built-in/)）覆盖 frontend-design、interactive-prototype、make-tweakable、wireframe、slide-deck、save-as-pdf、save-as-standalone-html、export-as-pptx-editable、export-as-pptx-screenshots。SKILL.md 通过 Vite glob 注册，新加 skill 把目录扔进 `built-in/` 即可。
 
 多 chat 已实装。`WorkspaceProvider` 持有 `chats` / `activeChatId`；每条 chat 的 messages 由 `useChat` 持有，并通过 `GET/PUT /api/projects/:id/messages?chatId=...` 按整条 thread 替换持久化。新 chat 先是前端 `isPending` placeholder，用户第一次发送前才 POST `/chats` materialize。
 
@@ -136,13 +148,14 @@ Verifier 子 agent 已实装：`fork_verifier_agent` 输出只作为信号；`us
 - `PUT /api/projects/:id/messages`
 - `GET/POST /api/projects/:id/comments`
 - `DELETE /api/projects/:id/comments/:commentId`
+- `GET/POST /api/projects/:id/assets`（v2 资产 manifest，对应 `register_assets` 工具）
 - `GET /api/util/fetch?url=...`
 
 当前没有 mounted `/api/share/:token` 或 `/api/projects/:id/share-link` 路由；`shares` 表/类型是遗留或未来占位，文档和 UI 不要把 share 当成可用功能，除非先补 route + tests。
 
 存储模型：
 
-- D1：`projects`、`blobs`、`files`、`chats`、`messages`、`comments`，以及目前未挂路由的 `shares`
+- D1：`projects`、`blobs`、`files`、`chats`、`messages`、`comments`、`assets`，以及目前未挂路由的 `shares`
 - R2：sha256 内容寻址 blob；`files` 表只保存 project/path 到 sha256 的当前指针
 - `messages.data` 存完整 Vercel AI SDK `UIMessage` JSON，worker 只抽 `id` / `role` / `position` 建索引
 - 文件 MIME 有 allowlist，改 `FileMimeType` 时同步 `ALLOWED_FILE_MIME_TYPES` 和 worker 推断逻辑

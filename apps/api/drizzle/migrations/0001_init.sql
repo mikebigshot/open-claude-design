@@ -5,7 +5,7 @@
 -- - `gen_random_uuid()` 由应用层（crypto.randomUUID）生成
 -- - `JSONB` 全部换成 TEXT（应用层 JSON.stringify）
 -- - 时间戳用 ISO8601 TEXT 而不是 timestamptz（D1 没有原生时间类型）
--- - 不做引用计数 GC（MVP 推迟）：blobs 表只做"是否上传过 R2"的查重索引
+-- - 不做引用计数 GC（已推迟）：blobs 表只做"是否上传过 R2"的查重索引
 --
 -- 索引策略：
 -- - projects.updated_at 用于 ListProjects ORDER BY desc

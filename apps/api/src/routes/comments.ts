@@ -3,7 +3,7 @@
 //   POST   /api/projects/:id/comments              ← CreateComment（client gen id，idempotent）
 //   DELETE /api/projects/:id/comments/:commentId   ← DeleteComment
 //
-// 设计理由（详见 CLAUDE.md §「post-MVP 持久化」）：
+// 设计理由：
 //   - id 由客户端生成（crypto.randomUUID），optimistic UI 时 client/server id 一致
 //   - 不引 conversations 层；project → 多 comments 直接挂
 //   - INSERT 用 ON CONFLICT REPLACE，retry 幂等

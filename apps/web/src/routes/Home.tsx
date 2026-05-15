@@ -3,7 +3,7 @@
 //   左 rail 创建表单（4 类型 tab + 名字 + 设计系统 + 保真度卡 + Create）
 //   右 main（sub-tabs + 搜索 + 项目网格）
 //
-// MVP 限制：
+// 当前限制：
 //   - 顶部 3 tab 只 Designs 实功能；Examples / Design systems 占位
 //   - 类型 4 tab 只 Prototype 实功能（见 TypePicker）
 //   - 设计系统下拉只 "Open Design Default" 可选

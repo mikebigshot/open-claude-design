@@ -4,7 +4,7 @@
 //   - HTML  → PreviewPanel（实际跑起来）
 //   - 其余  → FileSourceView（只看代码）
 //
-// MVP 版无 syntax highlighting —— 等实际有需要再引入 Shiki / Prism。
+// 暂不做 syntax highlighting —— 等实际有需要再引入 Shiki / Prism。
 // 行号 + monospace + 粗略的 line wrapping 已经够开发者用了。
 //
 // a11y: root 暴露 role="region" + aria-label + aria-live="polite",

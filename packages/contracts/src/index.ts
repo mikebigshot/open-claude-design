@@ -2,9 +2,9 @@
 // Slice ownership:
 //  - chat.ts:    chat model / message types (agent SDK switch: SSE types removed)
 //  - chats.ts:   multi-chat container (Task 2: 多 chat 支持)
-//  - comments.ts: pin / comment persistence (post-MVP follow-up)
+//  - comments.ts: pin / comment persistence
 //  - files.ts:   slice 3 (storage)
-//  - messages.ts: chat history persistence (post-MVP follow-up)
+//  - messages.ts: chat history persistence
 //  - projects.ts: slice 8 (CRUD)
 //
 // postMessage types and request field names in this package

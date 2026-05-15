@@ -83,7 +83,7 @@ describe('built-in registry (loaded via Vite glob)', () => {
   // v2 alignment plan §13 — 4 export / utility skills added 2026-05-12.
   // Names must match v2 verbatim (used as the chip label + skill-attachment
   // `name` attribute key).
-  it('make-tweakable loads (4-of-4 MVP skill coverage)', () => {
+  it('make-tweakable loads (4-of-4 core skill coverage)', () => {
     expect(SKILLS['make-tweakable']?.frontmatter.name).toBe('Make tweakable');
     expect(SKILLS['make-tweakable']?.frontmatter.description).toMatch(/tweak/i);
   });

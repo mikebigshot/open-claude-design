@@ -4,7 +4,7 @@
 // → buildSrcdoc / buildHtmlSrcdoc → srcdoc。ESC 返回 `/p/:id`。
 //
 // PRD 写到 Present▾ 下拉含 Full screen / Without chrome / Speaker view（[推测]
-// 见 PRD 模糊点清单），MVP 只做 "Without chrome"——把 Workspace 上的 chrome
+// 见 PRD 模糊点清单），目前只做 "Without chrome"——把 Workspace 上的 chrome
 // 全部隐藏。Speaker view / Full screen API 留 V2。
 
 import { useEffect, useState } from 'react';

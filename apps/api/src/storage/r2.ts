@@ -7,7 +7,7 @@
 // - GET 时设 Cache-Control: immutable, 1y
 // - 跨项目同 sha 仍存两份（per-project 隔离），但项目内重复内容不重写
 //
-// MVP 简化：只实现 putBlob / getBlob / blobExists；GC / ref count 推迟。
+// 目前简化：只实现 putBlob / getBlob / blobExists；GC / ref count 推迟。
 
 import type { FileMimeType } from '@open-design/contracts';
 

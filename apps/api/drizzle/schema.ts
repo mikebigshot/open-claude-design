@@ -1,6 +1,6 @@
 // D1 表行类型（TypeScript 描述）。
 //
-// 不依赖 drizzle-orm（MVP 走原生 D1 prepared statements）；这个文件只做
+// 不依赖 drizzle-orm（当前走原生 D1 prepared statements）；这个文件只做
 // 类型契约 + 列名常量，方便 storage/d1.ts 和 routes/* 共用。
 //
 // 如果未来引入 drizzle-orm，这个文件可以被 drizzle 的 sqliteTable() 定义直接替换，

@@ -7,7 +7,7 @@
 // of the FORK_BOUNDARY_PROMPT (prompt-level guardrail) — same goal, two
 // layers of defense.
 //
-// Our MVP tool set is smaller, so BLOCKED_TOOLS_VERIFIER is the v2 `see`
+// Our tool set is smaller, so BLOCKED_TOOLS_VERIFIER is the v2 `see`
 // list filtered to "tools that exist in our makeTools()". Reference v2 file:
 // wonderful-mendeleev-5231a7/.../artifacts/agent-loop/verifier-tools-and-fork-boundary.raw.js
 

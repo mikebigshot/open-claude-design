@@ -1,6 +1,6 @@
 // Recent activity feed (mirrors prototype `proto-chat.jsx` ActivityTab).
 //
-// MVP renders mock data when none is provided. The integration agent will wire
+// Renders mock data when none is provided. The integration agent will wire
 // this up to a WebSocket stream later (slice 5+); the shape stays identical.
 
 import styled, { useTheme } from 'styled-components';
