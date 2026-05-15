@@ -137,4 +137,56 @@ describe('applyPendingSnips', () => {
     expect(snipsApplied).toBe(1);
     expect(messages).toHaveLength(1);
   });
+
+  // ── Boundary extension across synthetic tool_result user messages ──
+  // The SDK emits synthetic user messages carrying tool_result parts in
+  // response to assistant tool_use parts; those synthetic msgs have no
+  // [id:mNNNN] tag. Removing up to a synthetic user msg would orphan its
+  // tool_result; the algorithm must extend past it to the next tagged
+  // user msg.
+  it("extends i_to past synthetic (untagged) user messages so tool_use/tool_result pairs stay together", () => {
+    const msgs: TestMessage[] = [
+      userMsg('a [id:m0001]'),
+      assistantMsg('tool_use 1'),
+      userMsg('synthetic tool_result A'), // NO [id] tag — synthetic
+      assistantMsg('reply 1'),
+      userMsg('b [id:m0002]'), // tagged
+      assistantMsg('tool_use 2'),
+      userMsg('synthetic tool_result B'), // NO [id] tag — synthetic
+      assistantMsg('reply 2'),
+      userMsg('c [id:m0003]'), // next tagged after m0002
+    ];
+    const { messages, snipsApplied } = applyPendingSnips(msgs, [
+      { from: 'm0001', to: 'm0002' },
+    ]);
+    expect(snipsApplied).toBe(1);
+    // Everything from a..(through synthetic-B + reply 2) is removed. Only
+    // the c-tagged user msg survives. Crucially, synthetic-B is NOT left
+    // dangling without its tool_use parent.
+    expect(messages.map((m) => stringifyTestContent(m.content))).toEqual([
+      'c [id:m0003]',
+    ]);
+  });
+
+  it("a snip whose 'to' is the LAST tagged user still extends past any trailing synthetic msgs", () => {
+    const msgs: TestMessage[] = [
+      userMsg('a [id:m0001]'),
+      assistantMsg('tool_use'),
+      userMsg('synthetic'), // synthetic user msg trails
+    ];
+    const { messages, snipsApplied } = applyPendingSnips(msgs, [
+      { from: 'm0001', to: 'm0001' },
+    ]);
+    expect(snipsApplied).toBe(1);
+    // Without boundary extension, the synthetic tail would survive as an
+    // orphan tool_result. With it, the whole conversation is empty.
+    expect(messages).toHaveLength(0);
+  });
 });
+
+function stringifyTestContent(content: TestMessage['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .map((p) => (p.type === 'text' ? (p.text ?? '') : ''))
+    .join('');
+}

@@ -38,6 +38,7 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import { hasDoneFired } from '../lib/done-gate.js';
 import {
   getMainLoopSnapshot,
   tryAcquireVerifier,
@@ -59,6 +60,9 @@ const ERR_ALREADY_RUNNING =
 
 const ERR_NO_CHAT_ID =
   'Error: no active chat id at the time of fork. This usually means the workspace is still hydrating; retry once the chat is loaded.';
+
+const ERR_DONE_REQUIRED =
+  'Error: call `done` first to surface a working view to the user before forking the verifier. (Or pass `task` for a directed mid-task check that bypasses this gate.)';
 
 export interface ForkVerifierToolDeps {
   /** Lazy getter so the active chatId is read at execute time, not at agent-build time. */
@@ -104,14 +108,21 @@ export function forkVerifierTool(deps: ForkVerifierToolDeps) {
         return { isError: true, content: ERR_NO_SNAPSHOT };
       }
 
-      // Guard #2 — single verifier per chat viewport (mirror of `tee(s)`).
+      const trimmedTask = (task ?? '').trim();
+      const directed = trimmedTask.length > 0;
+
+      // Guard #2 — done-gate (mirror of official `l6(chatId)`). Full-sweep
+      // mode (no task) requires that `done` ran cleanly first; directed
+      // checks (task present) bypass the gate per official semantics.
+      if (!directed && !hasDoneFired(chatId)) {
+        return { isError: true, content: ERR_DONE_REQUIRED };
+      }
+
+      // Guard #3 — single verifier per chat viewport (mirror of `tee(s)`).
       const viewportKey = `${chatId}::verifier`;
       if (!tryAcquireVerifier(viewportKey)) {
         return { isError: true, content: ERR_ALREADY_RUNNING };
       }
-
-      const trimmedTask = (task ?? '').trim();
-      const directed = trimmedTask.length > 0;
 
       // Flip UI state to "verifier running" before kicking off the spawn so
       // the panel can show a spinner / activity item right away.

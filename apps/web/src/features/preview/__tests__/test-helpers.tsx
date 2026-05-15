@@ -38,6 +38,7 @@ import type { IframeToParent } from '@open-design/iframe-runtime';
 import { theme } from '@/theme/theme';
 import { WorkspaceProvider, useWorkspace } from '@/state/workspace';
 import type { WorkspaceAction } from '@/state/types';
+import { _resetProjectFilesCache } from '@/state/use-project-files';
 
 // ───────── PreviewIframe stub ─────────
 //
@@ -262,9 +263,13 @@ export function getWorkspace(): WorkspaceHandle {
   return workspaceHandleRef.current;
 }
 
-/** Reset captured workspace state between tests. */
+/** Reset captured workspace state between tests. Also flushes the
+ *  workspace-wide useProjectFiles cache so each test starts from a clean
+ *  network mock (otherwise the second test with the same projectId hits a
+ *  stale cache entry from the first test's fetch). */
 export function resetWorkspaceCapture(): void {
   workspaceHandleRef.current = null;
+  _resetProjectFilesCache();
 }
 
 // ───────── jsdom polyfill ─────────

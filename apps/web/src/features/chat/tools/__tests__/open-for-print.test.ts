@@ -68,14 +68,24 @@ describe('openForPrintTool', () => {
     expect(openWindow).not.toHaveBeenCalled();
   });
 
-  it('strips leading slash so the URL is well-formed', async () => {
-    const openWindow = vi.fn().mockReturnValue({} as Window);
+  it('rejects leading-slash absolute path (security guard)', async () => {
+    const openWindow = vi.fn();
     const t = asTool(openForPrintTool('proj-1', openWindow));
-    await t.execute({ project_relative_file_path: '/deck/index.html' });
-    const url = openWindow.mock.calls[0]?.[0] as string;
-    // No double slash between /files/ and the path.
-    expect(url).not.toContain('/files//');
-    expect(url).toContain('/files/deck/index.html');
+    const out = await t.execute({ project_relative_file_path: '/deck/index.html' });
+    expect(out).toEqual(
+      expect.objectContaining({ ok: false, error: 'invalid_path' }),
+    );
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it('rejects path-traversal `..` segments', async () => {
+    const openWindow = vi.fn();
+    const t = asTool(openForPrintTool('proj-1', openWindow));
+    const out = await t.execute({ project_relative_file_path: '../other/proj.html' });
+    expect(out).toEqual(
+      expect.objectContaining({ ok: false, error: 'invalid_path' }),
+    );
+    expect(openWindow).not.toHaveBeenCalled();
   });
 
   it('describes itself for the v2 catalog', () => {

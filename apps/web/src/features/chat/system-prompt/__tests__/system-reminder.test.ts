@@ -56,14 +56,31 @@ describe('buildSystemReminder', () => {
     expect(out).toContain('Context is at 71% of the working limit');
   });
 
-  it('returns empty string under the default threshold when only maxTokens is supplied', () => {
-    // 50_000 / 100_000 = 50%, below the 70% default threshold.
-    expect(buildSystemReminder({ currentTokens: 50_000, maxTokens: 100_000 })).toBe('');
+  it('returns the pre-pressure (40%+) variant between 40% and 70% of maxTokens', () => {
+    // 50_000 / 100_000 = 50%, between 40% pre-pressure and 70% main threshold.
+    const out = buildSystemReminder({ currentTokens: 50_000, maxTokens: 100_000 });
+    expect(out).toContain('<system-reminder>');
+    expect(out).toContain('Context is at 50%');
+    // Distinguish from the main reminder: pre-pressure uses softer wording.
+    expect(out).toMatch(/Start registering snip|deferred|free to register/i);
+  });
+
+  it('returns empty string below the 40% pre-pressure floor', () => {
+    // 30_000 / 100_000 = 30%, below the 40% pre-pressure cutoff.
+    expect(buildSystemReminder({ currentTokens: 30_000, maxTokens: 100_000 })).toBe('');
   });
 
   it('returns empty string when neither threshold nor maxTokens is supplied (no signal)', () => {
     // Without a basis to compute a percentage, the reminder cannot be
     // formed honestly — caller should treat the empty string as "no-op".
     expect(buildSystemReminder({ currentTokens: 999_999 })).toBe('');
+  });
+
+  it('pre-pressure and main reminder are distinct strings', () => {
+    const pre = buildSystemReminder({ currentTokens: 50_000, maxTokens: 100_000 });
+    const main = buildSystemReminder({ currentTokens: 85_000, maxTokens: 100_000 });
+    expect(pre).not.toBe(main);
+    expect(main).toMatch(/end your turn/i);
+    expect(pre).not.toMatch(/end your turn/i);
   });
 });

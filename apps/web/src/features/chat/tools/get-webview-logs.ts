@@ -52,6 +52,7 @@ export function getWebviewLogsTool(ctx: GetWebviewLogsContext) {
       try {
         const result = await requestFromIframe<GetLogsResponse>({
           chatId: ctx.getChatId(),
+          viewport: 'agent',
           type: 'AGENT_GET_LOGS',
           signal: abortSignal,
         });

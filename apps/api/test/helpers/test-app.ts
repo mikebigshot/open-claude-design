@@ -9,6 +9,8 @@ import { filesGrepRoute } from '../../src/routes/files-grep.js';
 import { filesRoute } from '../../src/routes/files.js';
 import { messagesRoute } from '../../src/routes/messages.js';
 import { projectsRoute } from '../../src/routes/projects.js';
+import { shareRoute } from '../../src/routes/share.js';
+import { templatesRoute } from '../../src/routes/templates.js';
 import { utilFetchRoute } from '../../src/routes/util-fetch.js';
 /**
  * Build a Hono test app with c.env bound to the miniflare test env (DB, BLOBS,
@@ -32,6 +34,8 @@ export function makeTestApp(): {
   app.route('/api/projects', messagesRoute);
   app.route('/api/projects', commentsRoute);
   app.route('/api/projects', assetsRoute);
+  app.route('/api', shareRoute);
+  app.route('/api', templatesRoute);
   app.route('/api/util', utilFetchRoute);
   return {
     request: (input, init) =>

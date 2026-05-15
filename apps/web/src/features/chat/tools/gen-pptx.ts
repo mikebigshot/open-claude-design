@@ -12,6 +12,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { buildUrl } from '@/lib/api.js';
+import { getScreenshotCapture } from '../lib/screenshot-pool.js';
+
 // pptxgenjs is CommonJS — use a runtime import inside the lazy factory so
 // tests can DI a fake without pulling the real ~750 KB module.
 type PptxLike = {
@@ -195,6 +198,9 @@ function buildSlides(pptx: PptxLike, slides: Input['slides']): void {
 /**
  * Screenshots mode — one full-bleed image per slide. Speaker notes still
  * attach. Title / bullets / shapes are ignored if the agent set them.
+ *
+ * Each slide.image must already be a data: URI (resolution happens upstream
+ * in resolveScreenshotsModeImages).
  */
 function buildScreenshotSlides(
   pptx: PptxLike,
@@ -220,6 +226,64 @@ function buildScreenshotSlides(
       }
     }
   }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i]!);
+  return btoa(bin);
+}
+
+/**
+ * Resolve every slide.image into a data: URI in place. Accepts:
+ *   - `data:<mime>;base64,...`  — kept verbatim
+ *   - `__pool:<key>[:<index>]`  — read from the in-memory screenshot pool
+ *   - `http(s)://...`           — kept verbatim (pptxgenjs handles URL fetch)
+ *   - `<project-relative path>` — fetched from the worker, base64-encoded
+ *
+ * On any unresolvable ref (404, malformed pool key, etc.) returns the
+ * offending image string so the caller can build a precise error.
+ */
+async function resolveScreenshotsModeImages(
+  projectId: string,
+  slides: Input['slides'],
+): Promise<{ ok: true } | { ok: false; failed: string }> {
+  for (let i = 0; i < slides.length; i += 1) {
+    const spec = slides[i]!;
+    const ref = spec.image ?? '';
+    if (!ref || ref.startsWith('data:') || /^https?:\/\//i.test(ref)) continue;
+    if (ref.startsWith('__pool:')) {
+      const rest = ref.slice('__pool:'.length);
+      const colon = rest.lastIndexOf(':');
+      const key = colon >= 0 ? rest.slice(0, colon) : rest;
+      const idx = colon >= 0 ? Number(rest.slice(colon + 1)) : 0;
+      if (!key || !Number.isFinite(idx) || idx < 0) {
+        return { ok: false, failed: ref };
+      }
+      const blob = getScreenshotCapture(key, idx);
+      if (!blob) return { ok: false, failed: ref };
+      const buf = new Uint8Array(await new Response(blob).arrayBuffer());
+      const mime = blob.type || 'image/png';
+      spec.image = `data:${mime};base64,${bytesToBase64(buf)}`;
+      continue;
+    }
+    // Project-relative path → fetch from worker.
+    const path = ref.replace(/^\/+/, '');
+    const url = buildUrl(
+      `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURI(path)}`,
+    );
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch {
+      return { ok: false, failed: ref };
+    }
+    if (!res.ok) return { ok: false, failed: ref };
+    const mime = res.headers.get('content-type') ?? 'image/png';
+    const buf = new Uint8Array(await res.arrayBuffer());
+    spec.image = `data:${mime};base64,${bytesToBase64(buf)}`;
+  }
+  return { ok: true };
 }
 
 export function genPptxTool(projectId: string, deps?: GenPptxDeps) {
@@ -261,6 +325,17 @@ export function genPptxTool(projectId: string, deps?: GenPptxDeps) {
               message: `slides[${i}].image is required for mode='screenshots'. Capture each slide via the screenshot tool first.`,
             };
           }
+        }
+        // Resolve refs (project-relative paths, __pool keys) into data URIs
+        // before pptxgenjs serializes. Inline data: URIs and http(s) URLs
+        // pass through unchanged.
+        const resolved = await resolveScreenshotsModeImages(projectId, slides);
+        if (!resolved.ok) {
+          return {
+            ok: false,
+            error: 'render_failed',
+            message: `Failed to resolve screenshots-mode image: "${resolved.failed}". Make sure the file exists in the project (for _screenshots/ refs) or the in-memory key is registered (for __pool: refs).`,
+          };
         }
       }
 

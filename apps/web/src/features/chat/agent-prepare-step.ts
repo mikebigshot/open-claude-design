@@ -24,7 +24,9 @@
 import type { RegisteredSnip } from './loop-helpers/snip-applier.js';
 import { applyPendingSnips } from './loop-helpers/snip-applier.js';
 import { estimateTokens, type TokenEstimatorMessage } from './loop-helpers/token-estimator.js';
+import { renderTodoReminder } from './lib/render-todos.js';
 import { buildSystemReminder } from './system-prompt/index.js';
+import type { Todo } from './todos-state.js';
 
 export interface MakePrepareStepOptions {
   /**
@@ -48,6 +50,14 @@ export interface MakePrepareStepOptions {
    * trigger zone). Optional — caller may pass exact maxTokens for accuracy.
    */
   maxTokens?: number;
+  /**
+   * Function returning the current todo list for this chat. When the list
+   * contains outstanding (pending) todos, the prepareStep callback injects a
+   * `<todo_reminder>` block into the most recent user message. This fires
+   * regardless of token threshold; it's the "did you forget about the open
+   * todos" nudge.
+   */
+  getCurrentTodos?: () => readonly Todo[];
 }
 
 interface PrepareStepArgs {
@@ -69,33 +79,49 @@ export function makePrepareStep(opts: MakePrepareStepOptions) {
   return async (args: PrepareStepArgs): Promise<PrepareStepReturn | undefined> => {
     const { messages } = args;
     const total = estimateTokens(messages);
-    if (total < opts.threshold) return undefined;
+    const overThreshold = total >= opts.threshold;
 
-    // 1. Apply pending snips (if any registered).
+    // Always check todos so the <todo_reminder> fires independent of
+    // threshold (mirrors official pq()).
+    const todos = opts.getCurrentTodos?.() ?? [];
+    const todoReminder = renderTodoReminder([...todos]);
+
+    // Fast-path: under threshold AND no outstanding todos → nothing to do.
+    if (!overThreshold && !todoReminder) return undefined;
+
     let workingMessages: TokenEstimatorMessage[] = messages.slice();
-    if (opts.getRegisteredSnips) {
+    let snipsApplied = 0;
+
+    if (overThreshold && opts.getRegisteredSnips) {
       const snips = opts.getRegisteredSnips();
       if (snips.length > 0) {
-        const { messages: pruned, snipsApplied } = applyPendingSnips(messages, snips);
-        if (snipsApplied > 0) workingMessages = pruned;
+        const { messages: pruned, snipsApplied: applied } = applyPendingSnips(messages, snips);
+        snipsApplied = applied;
+        if (applied > 0) workingMessages = pruned;
       }
     }
 
-    // 2. Inject the v2 <system-reminder> nudge into the most recent user
-    // message's text content, so the LLM sees the context-pressure hint
-    // alongside its inputs. Empty reminder string → no-op.
-    const reminder = buildSystemReminder({
-      currentTokens: total,
-      threshold: opts.threshold,
-      maxTokens,
-    });
-    if (reminder) {
-      workingMessages = injectReminderIntoLastUserMessage(workingMessages, reminder);
+    // Build the combined reminder string. Token-pressure reminder fires
+    // only when over threshold; todo reminder fires whenever outstanding.
+    const systemReminder = overThreshold
+      ? buildSystemReminder({
+          currentTokens: total,
+          threshold: opts.threshold,
+          maxTokens,
+        })
+      : '';
+
+    let combined: string;
+    if (systemReminder && todoReminder) combined = `${systemReminder}\n${todoReminder}`;
+    else if (systemReminder) combined = systemReminder;
+    else combined = todoReminder ?? '';
+
+    if (combined) {
+      workingMessages = injectReminderIntoLastUserMessage(workingMessages, combined);
     }
 
-    // If neither snips nor reminder changed anything, return undefined so
-    // the SDK uses its original messages (no extra allocation).
-    if (workingMessages === messages) return undefined;
+    // Fall back to undefined if nothing actually changed.
+    if (snipsApplied === 0 && !combined) return undefined;
     return { messages: workingMessages };
   };
 }

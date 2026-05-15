@@ -70,3 +70,34 @@ assetsRoute.get('/:id/assets', async (c) => {
   const assets = await listAssets(c.env.DB, projectId);
   return c.json({ assets } satisfies ListAssetsResponse);
 });
+
+/**
+ * DELETE /api/projects/:id/assets — unregister assets from the manifest.
+ * Body: `{names: string[]}` — by asset name (matches the value the agent
+ * registered). Returns `{ok, deleted: N}` with the row count removed.
+ */
+assetsRoute.delete('/:id/assets', async (c) => {
+  const projectId = c.req.param('id');
+  const project = await getProject(c.env.DB, projectId);
+  if (!project) {
+    return c.json({ code: 'not_found', message: 'project not found' }, 404);
+  }
+  const body = (await c.req.json().catch(() => null)) as { names?: unknown } | null;
+  const names = Array.isArray(body?.names)
+    ? body!.names.filter((n): n is string => typeof n === 'string' && n.length > 0)
+    : [];
+  if (names.length === 0) {
+    return c.json({ code: 'invalid_request', message: 'names must be non-empty string array' }, 400);
+  }
+  // D1 IN clause via placeholders. The schema column is `asset` (the
+  // user-facing asset name), not `name`.
+  const placeholders = names.map((_, i) => `?${i + 2}`).join(',');
+  const result = await c.env.DB.prepare(
+    `DELETE FROM assets WHERE project_id = ?1 AND asset IN (${placeholders})`,
+  )
+    .bind(projectId, ...names)
+    .run();
+  const deleted = result.meta?.changes ?? 0;
+  if (deleted > 0) await touchProject(c.env.DB, projectId);
+  return c.json({ ok: true as const, deleted });
+});

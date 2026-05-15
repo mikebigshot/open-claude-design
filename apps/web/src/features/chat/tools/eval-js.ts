@@ -52,6 +52,7 @@ export function evalJsTool(ctx: EvalJsContext) {
       try {
         const result = await requestFromIframe<EvalJsResponse>({
           chatId: ctx.getChatId(),
+          viewport: 'agent',
           type: 'AGENT_EVAL_JS',
           payload: { code },
           timeoutMs: 10_000,

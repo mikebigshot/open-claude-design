@@ -177,4 +177,95 @@ describe('routes/assets', () => {
     const body = (await res.json()) as ListAssetsResponse;
     expect(body.assets).toEqual([]);
   });
+
+  // ── Phase 1 tail: write_file ↔ asset manifest auto-sync ────────────
+  it('PUT /files with body.asset auto-registers an asset row', async () => {
+    const app = makeTestApp();
+    const project = await createProject(app);
+    const putRes = await app.request(
+      `/api/projects/${project.id}/files/${encodeURIComponent('deck/index.html')}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          content: '<html/>',
+          asset: 'main-deck',
+          subtitle: 'v1',
+          viewport: { width: 1440, height: 900 },
+        }),
+      },
+    );
+    expect(putRes.status).toBe(200);
+    const list = await app.request(`/api/projects/${project.id}/assets`);
+    const body = (await list.json()) as ListAssetsResponse;
+    expect(body.assets).toHaveLength(1);
+    expect(body.assets[0]).toMatchObject({
+      asset: 'main-deck',
+      path: 'deck/index.html',
+      subtitle: 'v1',
+    });
+    // Viewport survives.
+    const vp = (body.assets[0] as { viewport?: { width: number; height?: number } | null })
+      .viewport;
+    expect(vp?.width).toBe(1440);
+    expect(vp?.height).toBe(900);
+  });
+
+  // ── Phase 4: unregister_assets via DELETE ──────────────────────────
+  it('DELETE /assets {names:[]} removes matching asset rows by asset name', async () => {
+    const app = makeTestApp();
+    const project = await createProject(app);
+    // Register two assets.
+    await app.request(`/api/projects/${project.id}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        items: [
+          { asset: 'a', path: 'a.html' },
+          { asset: 'b', path: 'b.html' },
+        ],
+      } satisfies RegisterAssetsRequest),
+    });
+
+    const del = await app.request(`/api/projects/${project.id}/assets`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ names: ['a'] }),
+    });
+    expect(del.status).toBe(200);
+    const delBody = (await del.json()) as { ok: boolean; deleted: number };
+    expect(delBody.deleted).toBe(1);
+
+    const list = await app.request(`/api/projects/${project.id}/assets`);
+    const body = (await list.json()) as ListAssetsResponse;
+    expect(body.assets.map((a) => a.asset)).toEqual(['b']);
+  });
+
+  // ── Phase 1 tail: delete_file → asset cascade ──────────────────────
+  it('POST /files/delete cascades to asset rows pointing at the deleted file', async () => {
+    const app = makeTestApp();
+    const project = await createProject(app);
+    await app.request(
+      `/api/projects/${project.id}/files/${encodeURIComponent('canvas.html')}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: 'x', asset: 'canvas-v1' }),
+      },
+    );
+    const before = (await (
+      await app.request(`/api/projects/${project.id}/assets`)
+    ).json()) as ListAssetsResponse;
+    expect(before.assets).toHaveLength(1);
+
+    await app.request(`/api/projects/${project.id}/files/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paths: ['canvas.html'] }),
+    });
+    const after = (await (
+      await app.request(`/api/projects/${project.id}/assets`)
+    ).json()) as ListAssetsResponse;
+    expect(after.assets).toEqual([]);
+  });
 });

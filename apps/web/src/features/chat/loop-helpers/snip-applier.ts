@@ -52,15 +52,19 @@ export function applyPendingSnips<TMsg extends MessageLike>(
     return { messages: [...messages], snipsApplied: 0 };
   }
 
-  // Index each user message by its id tag, AND track the sorted user-msg
-  // index list so we can find "next user msg after i_to" cheaply.
+  // Index each id-tagged user message. Untagged user messages (synthetic
+  // tool_result messages emitted by the SDK in response to assistant
+  // tool_use parts) are NOT indexed — they ride along with their parent
+  // turn rather than acting as snip boundaries.
   const idToIndex = new Map<string, number>();
-  const userMsgIndices: number[] = [];
+  const taggedUserIndices: number[] = [];
   messages.forEach((msg, idx) => {
     if (msg.role !== 'user') return;
-    userMsgIndices.push(idx);
     const tag = extractIdTag(msg);
-    if (tag != null) idToIndex.set(tag, idx);
+    if (tag != null) {
+      idToIndex.set(tag, idx);
+      taggedUserIndices.push(idx);
+    }
   });
 
   // Build a removal-mask in original-index space.
@@ -71,10 +75,13 @@ export function applyPendingSnips<TMsg extends MessageLike>(
     const i_to_user = idToIndex.get(snip.to);
     if (i_from == null || i_to_user == null) continue;
     if (i_from > i_to_user) continue;
-    // Find the next user-msg index strictly after i_to_user. Everything up
-    // to (but not including) that next user msg is part of the i_to user's
-    // trailing assistant context and gets pulled along with it.
-    const nextUserIdx = userMsgIndices.find((idx) => idx > i_to_user);
+    // Find the next id-TAGGED user-msg index strictly after i_to_user.
+    // Everything up to (but not including) that next tagged user msg is
+    // part of the i_to user's trailing assistant context (including any
+    // synthetic tool_result messages whose tool_use parts also fall in
+    // the range) and gets pulled along with it. Boundary-extending past
+    // synthetic user msgs prevents tool_use/tool_result orphans.
+    const nextUserIdx = taggedUserIndices.find((idx) => idx > i_to_user);
     const i_to = nextUserIdx != null ? nextUserIdx - 1 : messages.length - 1;
     for (let i = i_from; i <= i_to; i++) removeMask[i] = true;
     applied += 1;

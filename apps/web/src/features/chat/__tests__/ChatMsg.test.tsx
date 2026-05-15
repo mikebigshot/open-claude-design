@@ -466,4 +466,143 @@ describe('ChatMsg', () => {
       expect(screen.queryByRole('button', { name: /submit/i })).toBeNull();
     });
   });
+
+  // US-003: tool-present_fs_item_for_download renders a download card (not a
+  // verb chip) so the user can re-trigger the download from history. The
+  // card shows filename + size + a Download anchor with the proper
+  // download attribute and aria-label.
+  describe('present_fs_item_for_download download card (US-003)', () => {
+    it('state=output-available — renders Download anchor with filename + bytes label', () => {
+      renderMsg({
+        id: 'm-d1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-present_fs_item_for_download',
+            state: 'output-available',
+            input: { path: 'out/deck.pptx' },
+            output: {
+              ok: true,
+              kind: 'file',
+              path: 'out/deck.pptx',
+              label: 'deck.pptx',
+              bytes: 24576,
+              // downloadUrl is populated by the tool's execute() — anchor
+              // points at the worker file route so the user can re-fetch.
+              downloadUrl: '/api/projects/p1/files/out/deck.pptx',
+            },
+            toolCallId: 'c-d1',
+          },
+        ],
+      });
+      const link = screen.getByRole('link', { name: /download deck\.pptx/i });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('download');
+      expect(link).toHaveAttribute('href', '/api/projects/p1/files/out/deck.pptx');
+      // 24576 bytes ≈ 24 KB — rendered with a human-readable size label.
+      expect(screen.getByText(/24\.0\s*KB|24576\s*B/)).toBeInTheDocument();
+      expect(screen.getByText('deck.pptx')).toBeInTheDocument();
+    });
+
+    it('state=output-available + kind=project — labels as "<projectId>.zip"; no link (ephemeral zip)', () => {
+      renderMsg({
+        id: 'm-d2',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-present_fs_item_for_download',
+            state: 'output-available',
+            input: {},
+            output: {
+              ok: true,
+              kind: 'project',
+              path: '',
+              label: 'proj-1',
+              bytes: 1_500_000,
+            },
+            toolCallId: 'c-d2',
+          },
+        ],
+      });
+      expect(screen.getByText('proj-1.zip')).toBeInTheDocument();
+      expect(screen.getByText(/1\.4\s*MB|1500000\s*B/)).toBeInTheDocument();
+      // Zip is ephemeral (revoked object URL); card is informational only.
+      expect(screen.queryByRole('link')).toBeNull();
+      // But it should at least announce that the download has been delivered.
+      expect(screen.getByText(/downloaded|delivered|sent/i)).toBeInTheDocument();
+    });
+
+    it('state=input-streaming — shows a "preparing download" placeholder, no link yet', () => {
+      renderMsg({
+        id: 'm-d3',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-present_fs_item_for_download',
+            state: 'input-streaming',
+            input: { path: 'out/' },
+            toolCallId: 'c-d3',
+          },
+        ],
+      });
+      expect(screen.queryByRole('link')).toBeNull();
+      expect(screen.getByText(/preparing/i)).toBeInTheDocument();
+    });
+
+    it('state=output-available + ok:false — shows error message, no link', () => {
+      renderMsg({
+        id: 'm-d4',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-present_fs_item_for_download',
+            state: 'output-available',
+            input: { path: 'missing.txt' },
+            output: {
+              ok: false,
+              error: 'not_found',
+              message: 'No files matched path "missing.txt".',
+            },
+            toolCallId: 'c-d4',
+          },
+        ],
+      });
+      expect(screen.queryByRole('link')).toBeNull();
+      expect(screen.getByText(/missing\.txt/)).toBeInTheDocument();
+      expect(screen.getByText(/no files matched/i)).toBeInTheDocument();
+    });
+
+    it('regression — other tool-* parts still render as verb chips (not affected by download card branch)', () => {
+      renderMsg({
+        id: 'm-d5',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-read_file',
+            state: 'output-available',
+            input: { path: 'src/x.ts' },
+            toolCallId: 'c-d5a',
+          },
+          {
+            type: 'tool-present_fs_item_for_download',
+            state: 'output-available',
+            input: { path: 'a.txt' },
+            output: {
+              ok: true,
+              kind: 'file',
+              path: 'a.txt',
+              label: 'a.txt',
+              bytes: 10,
+              downloadUrl: '/api/projects/p1/files/a.txt',
+            },
+            toolCallId: 'c-d5b',
+          },
+        ],
+      });
+      // The read_file verb chip is rendered (target path appears as a chip)
+      expect(screen.getByText('src/x.ts')).toBeInTheDocument();
+      // The download card is also rendered
+      expect(screen.getByRole('link', { name: /download a\.txt/i })).toBeInTheDocument();
+    });
+  });
 });

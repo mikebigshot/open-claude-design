@@ -28,6 +28,7 @@ import {
   getFileRow,
   listFiles as listFilesRows,
   touchProject,
+  upsertAsset,
   upsertBlobRow,
   upsertFileRow,
 } from '../storage/d1.js';
@@ -88,18 +89,19 @@ filesRoute.put('/:id/files/:filePath{.+}', async (c) => {
 
   let bytes: Uint8Array;
   let mimeType: FileMimeType;
+  let jsonBody: FileWriteRequest | null = null;
 
   if (contentType.startsWith('application/json')) {
     // 文本路径：chat tool（write_file / str_replace）走这条
-    const body = await c.req.json<FileWriteRequest>();
-    if (typeof body.content !== 'string') {
+    jsonBody = await c.req.json<FileWriteRequest>();
+    if (typeof jsonBody.content !== 'string') {
       return c.json({ code: 'invalid_request', message: 'content must be a string' }, 400);
     }
     // 收紧：客户端给的 mimeType 必须命中 allowlist；split 掉 charset 等参数后再判
     // —— 否则降级到按文件后缀推断。防止 stored-XSS / 破坏 FileMimeType union 契约
-    const baseMime = (body.mimeType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+    const baseMime = (jsonBody.mimeType ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
     mimeType = isAllowedMime(baseMime) ? baseMime : inferMime(filePath);
-    bytes = new TextEncoder().encode(body.content);
+    bytes = new TextEncoder().encode(jsonBody.content);
   } else {
     // Binary 路径：ImportPopover / Composer paste 走这条
     const buf = await c.req.arrayBuffer();
@@ -120,6 +122,25 @@ filesRoute.put('/:id/files/:filePath{.+}', async (c) => {
   }
 
   const version = await upsertFileRow(c.env.DB, projectId, filePath, hash);
+
+  // Asset manifest auto-sync (Phase 1 tail). When the JSON body carries
+  // `asset` (with optional `subtitle` / `viewport`), register the file as
+  // a version of that asset. Mirrors the official `write_file` semantics
+  // where the same call atomically writes the file AND updates the
+  // user-facing asset list.
+  if (jsonBody && typeof jsonBody.asset === 'string' && jsonBody.asset.length > 0) {
+    const vp = jsonBody.viewport as { width?: unknown; height?: unknown } | undefined;
+    const w = vp && typeof vp.width === 'number' && vp.width > 0 ? Math.round(vp.width) : undefined;
+    const h =
+      vp && typeof vp.height === 'number' && vp.height > 0 ? Math.round(vp.height) : undefined;
+    await upsertAsset(c.env.DB, projectId, {
+      asset: jsonBody.asset,
+      path: filePath,
+      ...(typeof jsonBody.subtitle === 'string' ? { subtitle: jsonBody.subtitle } : {}),
+      ...(w !== undefined ? { viewport: { width: w, ...(h !== undefined ? { height: h } : {}) } } : {}),
+    });
+  }
+
   await touchProject(c.env.DB, projectId);
 
   return c.json({
@@ -141,6 +162,65 @@ filesRoute.delete('/:id/files/:filePath{.+}', async (c) => {
     return c.json({ ok: false, error: 'not_found' }, 404);
   }
   return c.json({ ok: true });
+});
+
+/**
+ * POST /api/projects/:id/files/delete —— batch + recursive 删除。
+ * Body: `{paths: string[]}` — each path either an exact file path or a
+ * directory path. Directory paths recursively delete everything under
+ * `${path}/` via D1 LIKE. R2 blobs are intentionally NOT removed (GC owns
+ * cleanup; multiple file rows can share a sha256).
+ *
+ * Returns: `{ok: true, results: [{path, deleted: N}, ...]}` — `deleted` is
+ * the row count for that entry (0 = no match).
+ */
+filesRoute.post('/:id/files/delete', async (c) => {
+  const projectId = c.req.param('id');
+  const body = (await c.req.json().catch(() => ({}))) as { paths?: unknown };
+  const paths = Array.isArray(body.paths)
+    ? body.paths.filter((p): p is string => typeof p === 'string' && p.length > 0)
+    : [];
+  if (paths.length === 0) {
+    return c.json({ error: 'paths array is required and must not be empty' }, 400);
+  }
+
+  const results: { path: string; deleted: number }[] = [];
+  for (const p of paths) {
+    // Try exact match first.
+    const exact = await c.env.DB.prepare(
+      'DELETE FROM files WHERE project_id = ? AND path = ?',
+    )
+      .bind(projectId, p)
+      .run();
+    const exactCount = exact.meta?.changes ?? 0;
+    if (exactCount > 0) {
+      // Cascade-clean any asset rows pointing at this exact path so the
+      // review manifest doesn't keep a dangling reference.
+      await c.env.DB.prepare(
+        'DELETE FROM assets WHERE project_id = ? AND path = ?',
+      )
+        .bind(projectId, p)
+        .run();
+      results.push({ path: p, deleted: exactCount });
+      continue;
+    }
+    // No exact match — treat as a directory and recursively delete via prefix.
+    const prefix = p.endsWith('/') ? p : `${p}/`;
+    const likeArg = `${prefix.replace(/[\\%_]/g, (m) => '\\' + m)}%`;
+    const recursive = await c.env.DB.prepare(
+      "DELETE FROM files WHERE project_id = ? AND path LIKE ? ESCAPE '\\'",
+    )
+      .bind(projectId, likeArg)
+      .run();
+    // Same prefix-based cascade for assets.
+    await c.env.DB.prepare(
+      "DELETE FROM assets WHERE project_id = ? AND path LIKE ? ESCAPE '\\'",
+    )
+      .bind(projectId, likeArg)
+      .run();
+    results.push({ path: p, deleted: recursive.meta?.changes ?? 0 });
+  }
+  return c.json({ ok: true as const, results });
 });
 
 /** 按文件后缀推 MIME；不在白名单里 fallback 为 text/plain。 */

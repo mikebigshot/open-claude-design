@@ -40,6 +40,7 @@ export function evalJsUserViewTool(ctx: EvalJsUserViewContext) {
       try {
         const result = await requestFromIframe<EvalJsResponse>({
           chatId: ctx.getChatId(),
+          viewport: 'user',
           type: 'AGENT_EVAL_JS',
           payload: { code },
           timeoutMs: 10_000,

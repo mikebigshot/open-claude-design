@@ -56,6 +56,15 @@ export interface FileWriteRequest {
   path: string;
   content: string; // UTF-8 text; binary uploads use multipart endpoint
   mimeType?: FileMimeType;
+  /**
+   * When present, the worker will also `upsertAsset` after writing the
+   * file row so the project's review manifest reflects this version
+   * without a follow-up `register_assets` call. `subtitle` / `viewport`
+   * propagate to the same asset row.
+   */
+  asset?: string;
+  subtitle?: string;
+  viewport?: { width: number; height?: number };
 }
 
 export interface FileWriteResponse {

@@ -9,10 +9,13 @@ import { assetsRoute } from './routes/assets.js';
 import { chatsRoute } from './routes/chats.js';
 import { commentsRoute } from './routes/comments.js';
 import { filesCopyRoute } from './routes/files-copy.js';
+import { filesEditRoute } from './routes/files-edit.js';
 import { filesGrepRoute } from './routes/files-grep.js';
 import { filesRoute } from './routes/files.js';
 import { messagesRoute } from './routes/messages.js';
 import { projectsRoute } from './routes/projects.js';
+import { shareRoute } from './routes/share.js';
+import { templatesRoute } from './routes/templates.js';
 import { utilFetchRoute } from './routes/util-fetch.js';
 
 export type Env = {
@@ -49,11 +52,14 @@ app.get('/health', (c) =>
 app.route('/api/projects', projectsRoute);
 app.route('/api/projects', filesRoute);
 app.route('/api/projects', filesCopyRoute);
+app.route('/api/projects', filesEditRoute);
 app.route('/api/projects', filesGrepRoute);
 app.route('/api/projects', chatsRoute);
 app.route('/api/projects', messagesRoute);
 app.route('/api/projects', commentsRoute);
 app.route('/api/projects', assetsRoute);
+app.route('/api', shareRoute);
+app.route('/api', templatesRoute);
 app.route('/api/util', utilFetchRoute);
 
 app.onError((err, c) => {

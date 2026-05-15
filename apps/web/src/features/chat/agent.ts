@@ -3,12 +3,13 @@ import { buildSystemMessages, buildAnthropicProviderOptions } from './system-pro
 import { listSkills, SKILLS } from '@/skills/registry.js';
 import { makeTools } from './tools/index.js';
 import { getModelPref } from '@/lib/model-pref.js';
-import { buildLanguageModel } from '@/lib/llm-providers.js';
+import { buildLanguageModel, buildServerToolMap } from '@/lib/llm-providers.js';
 import type { Todo } from './todos-state.js';
 import { type Fidelity, type LLMProvider } from '@open-design/contracts';
 import { wrapToolsForVerifierMode } from './verifier.js';
 import { makePrepareStep } from './agent-prepare-step.js';
 import type { RegisteredSnip } from './loop-helpers/snip-applier.js';
+import { getTodos } from './lib/todos-state-machine.js';
 
 /**
  * Agent mode: controls the loop's `stopWhen` and the tool subset.
@@ -87,6 +88,16 @@ export function createAgent(opts: CreateAgentOptions) {
   const prepareStep = makePrepareStep({
     getRegisteredSnips: opts.getRegisteredSnips,
     threshold: snipThreshold,
+    // Mirrors official pq(): inject `<todo_reminder>` for any chat with
+    // outstanding (pending) todos. Verifier mode skips the reminder — the
+    // sub-agent doesn't manage the main agent's todos.
+    getCurrentTodos:
+      mode === 'verifier'
+        ? undefined
+        : () => {
+            const id = opts.getChatId?.() ?? null;
+            return id ? getTodos(id) : [];
+          },
   });
   // §4.1 cross-W wire: adaptive thinking + output_config.effort go into
   // providerOptions.anthropic so the Anthropic-routed providers (anthropic
@@ -104,15 +115,21 @@ export function createAgent(opts: CreateAgentOptions) {
       userEmailDomain: undefined,
     }) as never,
     tools: wrapToolsForVerifierMode(
-      makeTools({
-        projectId: opts.projectId,
-        skills: SKILLS,
-        onTodosUpdate: opts.onTodosUpdate,
-        // `getChatId` is read by fork_verifier_agent (to look up its
-        // main-loop snapshot) and by snip / preview-side tools. Pass-through
-        // the getter so chat switches don't require rebuilding tools.
-        ...(opts.getChatId ? { getChatId: () => opts.getChatId!() ?? 'default' } : {}),
-      }),
+      {
+        ...makeTools({
+          projectId: opts.projectId,
+          skills: SKILLS,
+          onTodosUpdate: opts.onTodosUpdate,
+          // `getChatId` is read by fork_verifier_agent (to look up its
+          // main-loop snapshot) and by snip / preview-side tools.
+          ...(opts.getChatId ? { getChatId: () => opts.getChatId!() ?? 'default' } : {}),
+        }),
+        // Phase 6: on Anthropic-routed providers, swap our client web_fetch
+        // worker proxy for the server-side `web_fetch_*` tool (server fetches,
+        // caches, and emits citations). Falls back to no-op for everyone else.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(buildServerToolMap(provider, opts.apiKey) as Record<string, any>),
+      },
       mode,
     ),
     // §2.1 — automatically apply pending snips before each step when the

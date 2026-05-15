@@ -85,6 +85,17 @@ const SYSTEM_REMINDER_TEMPLATE = (pct: number) =>
 Context is at ${pct}% of the working limit. If there is completed work you have not yet queued for removal — resolved iterations, tool outputs already acted on, settled earlier phases — call snip(from_id, to_id) on its [id:mNNNN]-tagged messages. Do not mention, acknowledge, or reference this reminder in your response. If you have no pending user request and nothing further to snip, end your turn.
 </system-reminder>`;
 
+// Earlier, softer pre-pressure nudge: appears once context crosses ~40%
+// of the working limit but is still well below the apply-snips threshold.
+// Goal is to get the model to start registering snips early instead of
+// waiting until it must abort work to make room.
+const PRE_PRESSURE_REMINDER_TEMPLATE = (pct: number) =>
+  `<system-reminder>
+Context is at ${pct}% of the working limit. Start registering snip(from_id, to_id) for any completed work you no longer need to reference — earlier iterations, large tool outputs you've already acted on, exploration that didn't lead anywhere. Snips are deferred (free to register), they only take effect when pressure builds. Do not mention, acknowledge, or reference this reminder in your response.
+</system-reminder>`;
+
+const PRE_PRESSURE_FRACTION = 0.4;
+
 // ── v2 Anthropic provider options ─────────────────────────────────────────
 // claude.ai/design baselines on adaptive thinking + output_config.effort=high
 // (research/claude-design-v2/09-changes-vs-v1.md §9.3.1). We expose a builder
@@ -152,13 +163,24 @@ export function buildSystemReminder(opts: BuildSystemReminderOptions): string {
     return '';
   }
 
-  if (!(opts.currentTokens > threshold)) return '';
-
-  // Denominator for the reported percentage: prefer maxTokens (true working
-  // limit), else fall back to threshold so the number still has meaning.
   const denom =
     typeof opts.maxTokens === 'number' && opts.maxTokens > 0 ? opts.maxTokens : threshold;
   if (denom <= 0) return '';
   const pct = Math.min(100, Math.round((opts.currentTokens / denom) * 100));
-  return SYSTEM_REMINDER_TEMPLATE(pct);
+
+  if (opts.currentTokens > threshold) {
+    return SYSTEM_REMINDER_TEMPLATE(pct);
+  }
+  // Pre-pressure tier — softer, fires earlier (~40%+) to get the model
+  // registering snips before it actually has to. Only active when caller
+  // supplied an explicit `maxTokens` AND the threshold sits comfortably
+  // above the 40% line; otherwise we don't have a meaningful "before
+  // threshold" tier to talk about.
+  if (typeof opts.maxTokens === 'number' && opts.maxTokens > 0) {
+    const prePressureCutoff = opts.maxTokens * PRE_PRESSURE_FRACTION;
+    if (prePressureCutoff < threshold && opts.currentTokens > prePressureCutoff) {
+      return PRE_PRESSURE_REMINDER_TEMPLATE(pct);
+    }
+  }
+  return '';
 }

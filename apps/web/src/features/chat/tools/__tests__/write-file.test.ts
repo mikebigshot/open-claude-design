@@ -1,119 +1,164 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// write_file — aligned with official semantics:
+//   - reject paths containing `#` (URL fragment identifier breaks navigation)
+//   - accept viewport/{width,height?} + subtitle metadata params
+//   - dispatch `file-written` CustomEvent after a successful write
+//   - return "Wrote N characters to <path>" bare string
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeFileTool } from '../write-file';
+import { asSchema } from './_schema-helpers';
 
 const ctx = { toolCallId: 't1', messages: [], abortSignal: new AbortController().signal };
 
+interface FileWrittenDetail {
+  path: string;
+}
+
+function captureFileWritten(): { events: FileWrittenDetail[]; cleanup: () => void } {
+  const events: FileWrittenDetail[] = [];
+  const handler = (e: Event) => {
+    events.push((e as CustomEvent<FileWrittenDetail>).detail);
+  };
+  window.addEventListener('file-written', handler as EventListener);
+  return {
+    events,
+    cleanup: () => window.removeEventListener('file-written', handler as EventListener),
+  };
+}
+
+function mockOk(): void {
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ sha256: 'deadbeef', size: 11 }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof fetch;
+}
+
+beforeEach(() => {
+  globalThis.fetch = vi.fn() as unknown as typeof fetch;
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('write_file', () => {
-  it('PUTs content and returns sha256 + size on 200', async () => {
-    let calledUrl = '';
-    let method = '';
-    let body: unknown;
-    let contentType = '';
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      calledUrl = String(input);
-      method = init?.method ?? '';
-      body = JSON.parse(String(init?.body));
-      contentType = new Headers(init?.headers).get('content-type') ?? '';
-      return new Response(JSON.stringify({ sha256: 'deadbeef', size: 11 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
+  describe('schema', () => {
+    it('accepts viewport {width} and subtitle', () => {
+      const t = writeFileTool('p');
+      expect(
+        asSchema(t.inputSchema)?.safeParse({
+          path: 'a.jsx',
+          content: 'x',
+          subtitle: 'Indigo primary',
+          viewport: { width: 1440 },
+        }).success,
+      ).toBe(true);
+    });
 
-    const r = await writeFileTool('p1').execute!({ path: 'App.jsx', content: 'hello world' }, ctx);
-    expect(r).toEqual({ ok: true, path: 'App.jsx', sha256: 'deadbeef', size: 11 });
-    expect(calledUrl).toBe('/api/projects/p1/files/App.jsx');
-    expect(method).toBe('PUT');
-    expect(contentType).toBe('application/json');
-    expect(body).toEqual({ content: 'hello world' });
-  });
+    it('accepts viewport {width, height}', () => {
+      const t = writeFileTool('p');
+      expect(
+        asSchema(t.inputSchema)?.safeParse({
+          path: 'a.jsx',
+          content: 'x',
+          viewport: { width: 1440, height: 900 },
+        }).success,
+      ).toBe(true);
+    });
 
-  it('omits asset/mimeType from body when not provided', async () => {
-    let body: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(JSON.stringify({ sha256: 'a', size: 1 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-
-    await writeFileTool('p1').execute!({ path: 'A.jsx', content: 'x' }, ctx);
-    expect(body).toEqual({ content: 'x' });
-    expect(body).not.toHaveProperty('asset');
-    expect(body).not.toHaveProperty('mimeType');
-  });
-
-  it('includes asset and mimeType when provided', async () => {
-    let body: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(JSON.stringify({ sha256: 'a', size: 1 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-
-    await writeFileTool('p1').execute!(
-      { path: 'index.html', content: '<html/>', asset: 'home', mimeType: 'text/html' },
-      ctx,
-    );
-    expect(body).toEqual({
-      content: '<html/>',
-      asset: 'home',
-      mimeType: 'text/html',
+    it('still requires path + content', () => {
+      const t = writeFileTool('p');
+      expect(asSchema(t.inputSchema)?.safeParse({ content: 'x' }).success).toBe(false);
+      expect(asSchema(t.inputSchema)?.safeParse({ path: 'a' }).success).toBe(false);
     });
   });
 
-  it('handles empty content', async () => {
-    let body: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(JSON.stringify({ sha256: 'empty', size: 0 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
+  describe('# fragment rejection', () => {
+    it('refuses paths containing # before making any fetch', async () => {
+      let fetched = false;
+      globalThis.fetch = (async () => {
+        fetched = true;
+        return new Response('', { status: 200 });
+      }) as typeof fetch;
 
-    const r = await writeFileTool('p1').execute!({ path: 'empty.txt', content: '' }, ctx);
-    expect(body).toEqual({ content: '' });
-    expect(r).toEqual({ ok: true, path: 'empty.txt', sha256: 'empty', size: 0 });
+      const r = (await writeFileTool('p').execute!(
+        { path: 'broken#path.jsx', content: 'x' },
+        ctx,
+      )) as string;
+      expect(fetched).toBe(false);
+      expect(typeof r).toBe('string');
+      expect(r).toMatch(/error/i);
+      expect(r).toMatch(/#/);
+      expect(r).toMatch(/fragment/i);
+    });
   });
 
-  it('throws on non-2xx response', async () => {
-    globalThis.fetch = (async () =>
-      new Response('boom', { status: 500, statusText: 'Server Error' })) as typeof fetch;
-    await expect(
-      writeFileTool('p1').execute!({ path: 'A.jsx', content: 'x' }, ctx),
-    ).rejects.toThrow('write_file failed: 500');
+  describe('successful write', () => {
+    it('PUTs the content and returns "Wrote N characters to <path>"', async () => {
+      mockOk();
+      const r = (await writeFileTool('p').execute!(
+        { path: 'App.jsx', content: 'hello world' },
+        ctx,
+      )) as string;
+      expect(typeof r).toBe('string');
+      expect(r).toBe('Wrote 11 characters to App.jsx');
+    });
+
+    it('dispatches `file-written` CustomEvent with the path', async () => {
+      mockOk();
+      const capture = captureFileWritten();
+      await writeFileTool('p').execute!({ path: 'index.html', content: '<html/>' }, ctx);
+      capture.cleanup();
+      expect(capture.events).toEqual([{ path: 'index.html' }]);
+    });
+
+    it('forwards asset / viewport / subtitle / mimeType to worker', async () => {
+      let body: Record<string, unknown> | undefined;
+      globalThis.fetch = (async (_url, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ sha256: 'a', size: 1 }), { status: 200 });
+      }) as typeof fetch;
+
+      await writeFileTool('p').execute!(
+        {
+          path: 'deck.html',
+          content: 'x',
+          asset: 'main',
+          subtitle: 'v2 indigo',
+          viewport: { width: 1440, height: 900 },
+          mimeType: 'text/html',
+        },
+        ctx,
+      );
+      expect(body).toEqual({
+        content: 'x',
+        asset: 'main',
+        subtitle: 'v2 indigo',
+        viewport: { width: 1440, height: 900 },
+        mimeType: 'text/html',
+      });
+    });
+
+    it('omits optional fields when not provided', async () => {
+      let body: Record<string, unknown> | undefined;
+      globalThis.fetch = (async (_url, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ sha256: 'a', size: 1 }), { status: 200 });
+      }) as typeof fetch;
+      await writeFileTool('p').execute!({ path: 'A.jsx', content: 'x' }, ctx);
+      expect(body).toEqual({ content: 'x' });
+    });
   });
 
-  it('encodes path with subdirectories (preserves slashes)', async () => {
-    let calledUrl = '';
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      calledUrl = String(input);
-      return new Response(JSON.stringify({ sha256: 'a', size: 1 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-    await writeFileTool('p1').execute!({ path: 'src/components/Header.tsx', content: 'x' }, ctx);
-    expect(calledUrl).toBe('/api/projects/p1/files/src/components/Header.tsx');
-  });
-
-  it('treats explicit asset: "" as a provided value (not undefined)', async () => {
-    let body: Record<string, unknown> | undefined;
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(JSON.stringify({ sha256: 'a', size: 1 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-    // Per source code: only `asset !== undefined` gets included; empty string IS included
-    await writeFileTool('p1').execute!({ path: 'A.jsx', content: 'x', asset: '' }, ctx);
-    expect(body).toEqual({ content: 'x', asset: '' });
+  describe('errors', () => {
+    it('returns error string on non-2xx (does not throw)', async () => {
+      globalThis.fetch = (async () =>
+        new Response('boom', { status: 500, statusText: 'Server Error' })) as typeof fetch;
+      const r = (await writeFileTool('p').execute!(
+        { path: 'A.jsx', content: 'x' },
+        ctx,
+      )) as string;
+      expect(typeof r).toBe('string');
+      expect(r).toMatch(/error/i);
+      expect(r).toMatch(/500/);
+    });
   });
 });

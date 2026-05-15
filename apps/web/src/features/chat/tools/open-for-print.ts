@@ -42,8 +42,12 @@ function buildFileUrl(projectId: string, path: string): string {
  * within the last few seconds (typical for agent loop turn flow).
  */
 export function openForPrintTool(projectId: string, openWindow?: OpenWindowFn) {
+  // Pass `noopener,noreferrer` features so the opened tab can't reach back
+  // through `window.opener` (reverse-tabnabbing guard, aligned with official).
   const open: OpenWindowFn =
-    openWindow ?? ((url: string) => (typeof window !== 'undefined' ? window.open(url, '_blank') : null));
+    openWindow ??
+    ((url: string) =>
+      typeof window !== 'undefined' ? window.open(url, '_blank', 'noopener,noreferrer') : null);
 
   return tool<OpenForPrintInput, OpenForPrintOutput>({
     description:
@@ -58,6 +62,15 @@ export function openForPrintTool(projectId: string, openWindow?: OpenWindowFn) {
           ok: false,
           error: 'invalid_path',
           message: 'project_relative_file_path is required and cannot be empty.',
+        };
+      }
+      // Reject leading-slash absolute paths and `..` path-traversal so the
+      // tool can't be coerced into opening arbitrary worker routes.
+      if (path.startsWith('/') || path.split('/').some((seg) => seg === '..')) {
+        return {
+          ok: false,
+          error: 'invalid_path',
+          message: 'project_relative_file_path must be a relative path without `..` segments.',
         };
       }
       const url = buildFileUrl(projectId, path);

@@ -6,10 +6,7 @@ import { verificationFeedbackTool } from '../verification-feedback';
 interface ToolWithExecute {
   description: string;
   inputSchema?: { safeParse: (v: unknown) => { success: boolean } };
-  execute?: (input: {
-    verdict: 'done' | 'needs_work';
-    description: string;
-  }) => Promise<{ verdict: 'done' | 'needs_work'; description: string }>;
+  execute?: (input: { verdict: 'done' | 'needs_work'; description?: string }) => Promise<string>;
 }
 
 describe('verificationFeedbackTool', () => {
@@ -37,20 +34,24 @@ describe('verificationFeedbackTool', () => {
     expect(t.inputSchema?.safeParse({ verdict: 'maybe', description: 'x' }).success).toBe(false);
   });
 
-  it('rejects missing description', () => {
+  it('allows missing description when verdict is `done` (nothing to report)', () => {
     const t = verificationFeedbackTool() as unknown as ToolWithExecute;
-    expect(t.inputSchema?.safeParse({ verdict: 'done' }).success).toBe(false);
+    expect(t.inputSchema?.safeParse({ verdict: 'done' }).success).toBe(true);
   });
 
-  it('execute returns the verdict and description verbatim', async () => {
+  it('rejects missing description when verdict is `needs_work` (zod refine)', () => {
+    const t = verificationFeedbackTool() as unknown as ToolWithExecute;
+    expect(t.inputSchema?.safeParse({ verdict: 'needs_work' }).success).toBe(false);
+  });
+
+  it('execute returns the official no-op terminator string (verdict is read from tool_call.input)', async () => {
     const t = verificationFeedbackTool() as unknown as ToolWithExecute;
     const result = await t.execute!({
       verdict: 'needs_work',
-      description: 'Counter.jsx imports useState from "react/foo"',
+      description: 'broken',
     });
-    expect(result).toEqual({
-      verdict: 'needs_work',
-      description: 'Counter.jsx imports useState from "react/foo"',
-    });
+    expect(typeof result).toBe('string');
+    expect(result).toMatch(/no-?op/i);
+    expect(result).toMatch(/verifier/i);
   });
 });

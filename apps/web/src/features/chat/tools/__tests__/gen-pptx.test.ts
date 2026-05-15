@@ -352,4 +352,94 @@ describe('genPptxTool — screenshots mode (Step G)', () => {
       }),
     );
   });
+
+  // ── Step G screenshots-mode resolution: `_screenshots/<uuid>.png` and
+  //    `__pool:<key>:<idx>` should resolve into data URIs before pptxgenjs
+  //    serializes. The agent shouldn't need to manually inline frames. ──
+  it("resolves a project-relative path (e.g. _screenshots/<uuid>.png) by fetching the worker", async () => {
+    const fake = makeFakePptx();
+    // 1×1 PNG bytes for the worker response.
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13]);
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/files/_screenshots/')) {
+        return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } });
+      }
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    const t = asTool(
+      genPptxTool('proj-1', {
+        pptxFactory: () => fake.pptx as unknown as object,
+        triggerDownload: vi.fn(),
+      }),
+    );
+    const out = await t.execute({
+      mode: 'screenshots',
+      width: 1280,
+      height: 720,
+      slides: [
+        { image: '_screenshots/aaa.png' },
+        { image: '_screenshots/bbb.png' },
+      ],
+    });
+    expect(out).toEqual(expect.objectContaining({ ok: true, slideCount: 2 }));
+    expect(fake.slides).toHaveLength(2);
+    for (const s of fake.slides) {
+      const img = s.added.find((a) => a.kind === 'image');
+      const opts = img?.opts as { data?: string; path?: string } | undefined;
+      // The path MUST have been resolved into a data URI before pptxgenjs sees it.
+      expect(opts?.data).toMatch(/^data:image\/png;base64,/);
+      expect(opts?.path).toBeUndefined();
+    }
+  });
+
+  it('resolves __pool:<key>:<index> by reading from the in-memory screenshot pool (no fetch)', async () => {
+    const fake = makeFakePptx();
+    const { setScreenshotCaptures, _resetScreenshotPool } = await import(
+      '../../lib/screenshot-pool'
+    );
+    _resetScreenshotPool();
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    setScreenshotCaptures('frames', [
+      new Blob([new Uint8Array(png).buffer as ArrayBuffer], { type: 'image/png' }),
+      new Blob([new Uint8Array([1, 2, 3, 4]).buffer as ArrayBuffer], { type: 'image/png' }),
+    ]);
+    globalThis.fetch = (async () => {
+      throw new Error('fetch should not be called for __pool: refs');
+    }) as typeof fetch;
+    const t = asTool(
+      genPptxTool('proj-1', {
+        pptxFactory: () => fake.pptx as unknown as object,
+        triggerDownload: vi.fn(),
+      }),
+    );
+    const out = await t.execute({
+      mode: 'screenshots',
+      slides: [{ image: '__pool:frames:0' }, { image: '__pool:frames:1' }],
+    });
+    expect(out).toEqual(expect.objectContaining({ ok: true, slideCount: 2 }));
+    for (const s of fake.slides) {
+      const img = s.added.find((a) => a.kind === 'image');
+      const opts = img?.opts as { data?: string; path?: string } | undefined;
+      expect(opts?.data).toMatch(/^data:image\/png;base64,/);
+      expect(opts?.path).toBeUndefined();
+    }
+  });
+
+  it('returns ok:false with a clear message when an _screenshots/ ref 404s', async () => {
+    const fake = makeFakePptx();
+    globalThis.fetch = (async () => new Response('', { status: 404 })) as typeof fetch;
+    const t = asTool(
+      genPptxTool('proj-1', {
+        pptxFactory: () => fake.pptx as unknown as object,
+        triggerDownload: vi.fn(),
+      }),
+    );
+    const out = await t.execute({
+      mode: 'screenshots',
+      slides: [{ image: '_screenshots/missing.png' }],
+    });
+    expect(out).toMatchObject({ ok: false });
+    expect(String((out as { message?: string }).message ?? '')).toMatch(/_screenshots\/missing\.png/);
+  });
 });

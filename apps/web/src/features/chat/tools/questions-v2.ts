@@ -54,6 +54,21 @@ export function questionsV2Tool() {
     inputSchema: QuestionsV2Input,
     // Signal-only: render UI is a parallel concern (see ChatPanel +
     // QuestionsForm). The agent must end its turn after this returns.
-    execute: async () => 'Questions sent. End your turn to let the user answer.',
+    //
+    // Dispatches a `questions-v2-show` CustomEvent on `window` so host
+    // shells can subscribe via `useQuestionsV2Listener` and render the
+    // form independently of the chat message stream — survives snip /
+    // rehydration / message replay. The detail carries the toolCallId so
+    // submit/cancel can stitch results back to the right call.
+    execute: async (spec, ctx) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-show', {
+            detail: { spec, toolCallId: ctx?.toolCallId ?? '' },
+          }),
+        );
+      }
+      return 'Questions sent. End your turn to let the user answer.';
+    },
   });
 }

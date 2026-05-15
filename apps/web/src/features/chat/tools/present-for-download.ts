@@ -29,7 +29,17 @@ interface FileEntry {
 }
 
 type Output =
-  | { ok: true; kind: 'file' | 'folder' | 'project'; path: string; label: string; bytes: number }
+  | {
+      ok: true;
+      kind: 'file' | 'folder' | 'project';
+      path: string;
+      label: string;
+      bytes: number;
+      /** Worker URL for a stable single-file download. Populated only when
+       *  `kind === 'file'`; folder/project zips are ephemeral (blob URL is
+       *  revoked after the click) so the history card stays informational. */
+      downloadUrl?: string;
+    }
   | { ok: false; error: 'invalid_path'; message: string }
   | { ok: false; error: 'not_found'; message: string }
   | { ok: false; error: 'fetch_failed'; message: string };
@@ -177,12 +187,19 @@ export function presentFsItemForDownloadTool(projectId: string, deps?: PresentFo
         });
         const filename = basename(file.path);
         triggerDownload(blob, filename);
+        const downloadUrl = buildUrl(
+          `/api/projects/${encodeURIComponent(projectId)}/files/${file.path
+            .split('/')
+            .map((seg) => encodeURIComponent(seg))
+            .join('/')}`,
+        );
         return {
           ok: true,
           kind: 'file',
           path: file.path,
           label: label ?? filename,
           bytes: file.bytes.length,
+          downloadUrl,
         };
       }
 

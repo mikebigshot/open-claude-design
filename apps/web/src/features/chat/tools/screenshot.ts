@@ -43,6 +43,7 @@ export function screenshotTool(ctx: ScreenshotContext) {
       try {
         const result = await requestFromIframe<ScreenshotResponse>({
           chatId: ctx.getChatId(),
+          viewport: 'agent',
           type: 'AGENT_SCREENSHOT',
           payload: { path },
           timeoutMs: 30_000,

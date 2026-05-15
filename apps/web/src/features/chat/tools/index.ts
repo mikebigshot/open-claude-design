@@ -2,26 +2,43 @@ import type { Todo } from '../todos-state.js';
 import type { ParsedSkill } from '@/skills/registry.js';
 
 import { copyFilesTool } from './copy-files.js';
+import { copyStarterComponentTool } from './copy-starter-component.js';
 import { deleteFileTool } from './delete-file.js';
 import { doneTool } from './done.js';
 import { evalJsTool } from './eval-js.js';
 import { evalJsUserViewTool } from './eval-js-user-view.js';
 import { forkVerifierTool } from './fork-verifier.js';
 import { genPptxTool } from './gen-pptx.js';
+import { getPublicFileUrlTool } from './get-public-file-url.js';
 import { getWebviewLogsTool } from './get-webview-logs.js';
 import { grepTool } from './grep.js';
+import { imageMetadataTool } from './image-metadata.js';
 import { invokeSkillTool } from './invoke-skill.js';
 import { listFilesTool } from './list-files.js';
+import {
+  localCopyToProjectTool,
+  localGrepTool,
+  localLsTool,
+  localReadTool,
+} from './local-fs.js';
 import { multiScreenshotTool } from './multi-screenshot.js';
 import { openForPrintTool } from './open-for-print.js';
 import { presentFsItemForDownloadTool } from './present-for-download.js';
 import { questionsV2Tool } from './questions-v2.js';
 import { readFileTool } from './read-file.js';
 import { registerAssetsTool } from './register-assets.js';
+import { runScriptTool } from './run-script.js';
+import { saveAsTemplateTool } from './save-as-template.js';
+import { saveScreenshotTool } from './save-screenshot.js';
 import { screenshotTool } from './screenshot.js';
 import { screenshotUserViewTool } from './screenshot-user-view.js';
+import { setProjectTitleTool } from './set-project-title.js';
+import { showHtmlTool } from './show-html.js';
+import { showToUserTool } from './show-to-user.js';
+import { sleepTool } from './sleep.js';
 import { snipTool } from './snip.js';
 import { strReplaceBasedEditTool } from './str-replace-based-edit-tool.js';
+import { unregisterAssetsTool } from './unregister-assets.js';
 import { superInlineHtmlTool } from './super-inline-html.js';
 import { updateTodosTool } from './update-todos.js';
 import { verificationFeedbackTool } from './verification-feedback.js';
@@ -65,11 +82,14 @@ export function makeTools(ctx: MakeToolsContext) {
     grep: grepTool(ctx.projectId),
     delete_file: deleteFileTool(ctx.projectId),
     copy_files: copyFilesTool(ctx.projectId),
+    copy_starter_component: copyStarterComponentTool(ctx.projectId),
+    get_public_file_url: getPublicFileUrlTool(ctx.projectId),
     view_image: viewImageTool(ctx.projectId),
-    update_todos: updateTodosTool({ onUpdate: ctx.onTodosUpdate }),
+    image_metadata: imageMetadataTool(ctx.projectId),
+    update_todos: updateTodosTool({ getChatId, onUpdate: ctx.onTodosUpdate }),
     invoke_skill: invokeSkillTool({ skills: ctx.skills }),
     web_fetch: webFetchTool(),
-    done: doneTool(),
+    done: doneTool({ getChatId }),
     // Verifier sub-agent. Both tools are present in main + verifier tool
     // sets — the FORK_BOUNDARY_PROMPT educates the verifier not to call
     // fork_verifier_agent recursively, and forbids the main agent from
@@ -80,9 +100,21 @@ export function makeTools(ctx: MakeToolsContext) {
     fork_verifier_agent: forkVerifierTool({ getChatId: () => getChatId() }),
     verification_feedback: verificationFeedbackTool(),
     // Agent v2 universal additions.
+    set_project_title: setProjectTitleTool(ctx.projectId),
+    show_html: showHtmlTool({ getChatId }),
+    show_to_user: showToUserTool({ getChatId }),
+    sleep: sleepTool(),
+    local_ls: localLsTool(),
+    local_read: localReadTool(),
+    local_grep: localGrepTool(),
+    local_copy_to_project: localCopyToProjectTool(ctx.projectId),
     snip: snipTool({ getChatId }),
     questions_v2: questionsV2Tool(),
     register_assets: registerAssetsTool(ctx.projectId),
+    unregister_assets: unregisterAssetsTool(ctx.projectId),
+    save_as_template: saveAsTemplateTool(ctx.projectId),
+    save_screenshot: saveScreenshotTool(ctx.projectId, { getChatId }),
+    run_script: runScriptTool(ctx.projectId),
     // v2 deck/PPT alignment (research §13) — Save as PDF skill calls this
     // to open the deck/document HTML in a new tab so the OS print dialog
     // can produce a clean PDF. present_fs_item_for_download is used by
@@ -105,7 +137,7 @@ export function makeTools(ctx: MakeToolsContext) {
       eval_js: evalJsTool({ getChatId }),
       screenshot: screenshotTool({ getChatId }),
       get_webview_logs: getWebviewLogsTool({ getChatId }),
-      multi_screenshot: multiScreenshotTool({ getChatId }),
+      multi_screenshot: multiScreenshotTool(ctx.projectId, { getChatId }),
     } as const;
   }
 

@@ -18,6 +18,7 @@ import {
   _resetMainLoopRegistry,
   type MainLoopSnapshot,
 } from '../../main-loop-registry';
+import { markDone, _resetDoneGate } from '../../lib/done-gate';
 
 // Mock spawnVerifier so we don't actually hit any network. Each test sets
 // the resolution explicitly.
@@ -77,6 +78,7 @@ function getChatIdConst(id: string | null): () => string | null {
 describe('forkVerifierTool', () => {
   beforeEach(() => {
     _resetMainLoopRegistry();
+    _resetDoneGate();
     spawnVerifierMock.mockReset();
   });
 
@@ -129,6 +131,7 @@ describe('forkVerifierTool', () => {
     it('returns isError when a verifier is already running for the same chat viewport', async () => {
       const snap = snapshot();
       registerMainLoop('c1', () => snap);
+      markDone('c1');
       // Simulate a prior fork that's still running.
       expect(tryAcquireVerifier('c1::verifier')).toBe(true);
 
@@ -146,6 +149,7 @@ describe('forkVerifierTool', () => {
     it('release of the prior fork allows the next execute to spawn', async () => {
       const snap = snapshot();
       registerMainLoop('c1', () => snap);
+      markDone('c1');
       tryAcquireVerifier('c1::verifier');
       releaseVerifier('c1::verifier');
 
@@ -168,6 +172,7 @@ describe('forkVerifierTool', () => {
         messages: [{ id: 'm1', role: 'user', parts: [] }] as never,
       });
       registerMainLoop('c1', () => snap);
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
@@ -188,6 +193,7 @@ describe('forkVerifierTool', () => {
 
     it('passes undefined instructions when task is omitted or whitespace', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
 
@@ -203,6 +209,7 @@ describe('forkVerifierTool', () => {
     it('fires onSpawnStart synchronously before returning the placeholder', async () => {
       const onSpawnStart = vi.fn();
       registerMainLoop('c1', () => snapshot({ onSpawnStart }));
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
@@ -216,6 +223,8 @@ describe('forkVerifierTool', () => {
       const snapB = snapshot({ apiKey: 'sk-B', mainSessionId: 'main-B' });
       registerMainLoop('chat-A', () => snapA);
       registerMainLoop('chat-B', () => snapB);
+      markDone('chat-A');
+      markDone('chat-B');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       let currentChatId: string = 'chat-A';
@@ -237,6 +246,7 @@ describe('forkVerifierTool', () => {
     it('invokes snapshot.onVerdict when spawnVerifier resolves', async () => {
       const onVerdict = vi.fn();
       registerMainLoop('c1', () => snapshot({ onVerdict }));
+      markDone('c1');
 
       const verdict = {
         verdict: 'done' as const,
@@ -257,6 +267,7 @@ describe('forkVerifierTool', () => {
     it('invokes snapshot.onError when spawnVerifier rejects', async () => {
       const onError = vi.fn();
       registerMainLoop('c1', () => snapshot({ onError }));
+      markDone('c1');
 
       spawnVerifierMock.mockRejectedValue(new Error('boom'));
 
@@ -272,6 +283,7 @@ describe('forkVerifierTool', () => {
 
     it('releases the verifier viewport lock after resolve so next fork can fire', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockResolvedValue({
         verdict: 'done',
         description: 'ok',
@@ -289,6 +301,7 @@ describe('forkVerifierTool', () => {
 
     it('releases the verifier viewport lock after reject as well', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockRejectedValue(new Error('boom'));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
@@ -303,6 +316,7 @@ describe('forkVerifierTool', () => {
   describe('placeholder protocol (v2 __async)', () => {
     it('execute returns an __async-tagged spec with _toolName / _label / placeholder', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
@@ -317,6 +331,7 @@ describe('forkVerifierTool', () => {
 
     it('full-sweep placeholder is the v2 verbatim "no news is good news" string', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
@@ -330,11 +345,87 @@ describe('forkVerifierTool', () => {
 
     it('placeholder narrative shifts when task is provided (directed-check mode)', async () => {
       registerMainLoop('c1', () => snapshot());
+      markDone('c1');
       spawnVerifierMock.mockReturnValue(new Promise(() => {}));
 
       const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
       const result = (await t.execute!({ task: 'check spacing' })) as OkResult;
       expect(result.placeholder).toMatch(/directed|always report|regardless/i);
+    });
+  });
+
+  // Aligns with the official Claude Design `l6` gate
+  // (research/claude-design-v2/artifacts/agent-loop/
+  // verifier-tools-and-fork-boundary.raw.js): full-sweep forks require a
+  // prior successful `done`, but directed-check forks (with `task`) bypass
+  // this gate. The gate is per-chat — chat A's done does not unlock chat B's
+  // fork.
+  describe('done-gate enforcement (l6)', () => {
+    it('full-sweep fork refused when done has not fired for this chat', async () => {
+      const snap = snapshot();
+      registerMainLoop('c1', () => snap);
+      // NB: no markDone('c1') call — gate is closed.
+      spawnVerifierMock.mockReturnValue(new Promise(() => {}));
+
+      const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
+      const result = (await t.execute!({})) as ErrResult;
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/call.*done.*first/i);
+      expect(spawnVerifierMock).not.toHaveBeenCalled();
+    });
+
+    it('full-sweep fork allowed once done has fired for this chat', async () => {
+      const snap = snapshot();
+      registerMainLoop('c1', () => snap);
+      markDone('c1');
+      spawnVerifierMock.mockReturnValue(new Promise(() => {}));
+
+      const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
+      const result = (await t.execute!({})) as OkResult;
+
+      expect(isAsyncToolResult(result)).toBe(true);
+      expect(spawnVerifierMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('directed-check fork bypasses the gate even when done has not fired', async () => {
+      const snap = snapshot();
+      registerMainLoop('c1', () => snap);
+      // No markDone — gate closed, but task is set.
+      spawnVerifierMock.mockReturnValue(new Promise(() => {}));
+
+      const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
+      const result = (await t.execute!({ task: 'check spacing' })) as OkResult;
+
+      expect(isAsyncToolResult(result)).toBe(true);
+      expect(spawnVerifierMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('gate is per-chat — chat A done does not unlock chat B fork', async () => {
+      const snapA = snapshot({ mainSessionId: 'A' });
+      const snapB = snapshot({ mainSessionId: 'B' });
+      registerMainLoop('chat-A', () => snapA);
+      registerMainLoop('chat-B', () => snapB);
+      markDone('chat-A'); // only A is flipped
+
+      const t = forkVerifierTool({
+        getChatId: () => 'chat-B',
+      }) as unknown as ToolWithExecute;
+      const result = (await t.execute!({})) as ErrResult;
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatch(/call.*done.*first/i);
+      expect(spawnVerifierMock).not.toHaveBeenCalled();
+    });
+
+    it('error message mentions both the done requirement and the task bypass', async () => {
+      const snap = snapshot();
+      registerMainLoop('c1', () => snap);
+      const t = forkVerifierTool({ getChatId: getChatIdConst('c1') }) as unknown as ToolWithExecute;
+      const result = (await t.execute!({})) as ErrResult;
+      expect(result.content).toMatch(/done/i);
+      expect(result.content).toMatch(/task/i);
+      expect(result.content).toMatch(/directed|bypass|mid-task/i);
     });
   });
 });

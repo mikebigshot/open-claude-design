@@ -1,17 +1,19 @@
 // makeTools — agent v2 alignment. Mode-gated tool surface:
-//   - main mode (default): 14 baseline + snip + questions_v2 + register_assets
-//                          + open_for_print + present_fs_item_for_download
-//                          + gen_pptx + super_inline_html
-//                          + eval_js_user_view + screenshot_user_view = 23 tools
-//   - verifier mode: 14 baseline + snip + questions_v2 + register_assets
-//                    + open_for_print + present_fs_item_for_download
-//                    + gen_pptx + super_inline_html + eval_js + screenshot
-//                    + get_webview_logs + multi_screenshot = 25 tools
+//   - main mode (default): 14 baseline + snip + sleep + questions_v2
+//                          + register_assets + open_for_print
+//                          + present_fs_item_for_download + gen_pptx
+//                          + super_inline_html + eval_js_user_view
+//                          + screenshot_user_view = 24 tools
+//   - verifier mode: 14 baseline + snip + sleep + questions_v2
+//                    + register_assets + open_for_print
+//                    + present_fs_item_for_download + gen_pptx
+//                    + super_inline_html + eval_js + screenshot
+//                    + get_webview_logs + multi_screenshot = 26 tools
 //
 // Verifier-only and main-only tools never overlap. `open_for_print`,
 // `present_fs_item_for_download`, `gen_pptx`, and `super_inline_html`
 // (research/claude-design-v2 §13) are universal — both surfaces export
-// artifacts to the user.
+// artifacts to the user. `sleep` is new in Phase 1 alignment.
 
 import { describe, expect, it } from 'vitest';
 import { makeTools } from './index';
@@ -25,27 +27,42 @@ const baseCtx = {
 };
 
 describe('makeTools — agent v2 alignment surface', () => {
-  it('main mode (default) exposes the 23 expected tools', () => {
+  it('main mode (default) exposes the 38 expected tools', () => {
     const tools = makeTools(baseCtx);
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
+      'copy_starter_component',
       'delete_file',
       'done',
       'eval_js_user_view',
       'fork_verifier_agent',
       'gen_pptx',
+      'get_public_file_url',
       'grep',
+      'image_metadata',
       'invoke_skill',
       'list_files',
+      'local_copy_to_project',
+      'local_grep',
+      'local_ls',
+      'local_read',
       'open_for_print',
       'present_fs_item_for_download',
       'questions_v2',
       'read_file',
       'register_assets',
+      'run_script',
+      'save_as_template',
+      'save_screenshot',
       'screenshot_user_view',
+      'set_project_title',
+      'show_html',
+      'show_to_user',
+      'sleep',
       'snip',
       'str_replace_based_edit_tool',
       'super_inline_html',
+      'unregister_assets',
       'update_todos',
       'verification_feedback',
       'view_image',
@@ -54,29 +71,44 @@ describe('makeTools — agent v2 alignment surface', () => {
     ]);
   });
 
-  it('verifier mode exposes the 25 expected tools (verifier-only set, no user-view siblings)', () => {
+  it('verifier mode exposes the 40 expected tools (verifier-only set, no user-view siblings)', () => {
     const tools = makeTools({ ...baseCtx, mode: 'verifier' });
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
+      'copy_starter_component',
       'delete_file',
       'done',
       'eval_js',
       'fork_verifier_agent',
       'gen_pptx',
+      'get_public_file_url',
       'get_webview_logs',
       'grep',
+      'image_metadata',
       'invoke_skill',
       'list_files',
+      'local_copy_to_project',
+      'local_grep',
+      'local_ls',
+      'local_read',
       'multi_screenshot',
       'open_for_print',
       'present_fs_item_for_download',
       'questions_v2',
       'read_file',
       'register_assets',
+      'run_script',
+      'save_as_template',
+      'save_screenshot',
       'screenshot',
+      'set_project_title',
+      'show_html',
+      'show_to_user',
+      'sleep',
       'snip',
       'str_replace_based_edit_tool',
       'super_inline_html',
+      'unregister_assets',
       'update_todos',
       'verification_feedback',
       'view_image',

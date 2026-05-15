@@ -114,7 +114,25 @@ CREATE TABLE IF NOT EXISTS assets (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_assets_project_asset_path ON assets (project_id, asset, path);
 
-CREATE INDEX IF NOT EXISTS idx_assets_project_group ON assets (project_id, group_)
+CREATE INDEX IF NOT EXISTS idx_assets_project_group ON assets (project_id, group_);
+
+CREATE TABLE IF NOT EXISTS templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  source_project_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS template_files (
+  template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  PRIMARY KEY (template_id, path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_templates_created ON templates(created_at DESC)
 `;
 
 let migrated = false;

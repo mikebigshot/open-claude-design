@@ -3,10 +3,15 @@ import { ensureMigrated } from './helpers/miniflare-env.js';
 import { makeTestApp } from './helpers/test-app.js';
 import type { Project } from '@open-design/contracts';
 
-// Real route shape (apps/api/src/routes/files-grep.ts):
+// Aligned with official Claude Design `grep`:
 //   POST /api/projects/:projectId/grep
-//        body: { pattern: string, include?: string }
-//        → 200 { ok: true, matches: { path, line, text }[], truncated: boolean } | 400
+//     body: { pattern: string (regex), path?: string (dir prefix or file scope) }
+//     → 200 {
+//         ok: true,
+//         matches: { path, line, before[], match, after[] }[],
+//         truncated: boolean
+//       }
+//   Case-insensitive regex. Up to 100 matches. ±2 lines context.
 
 async function createProject(app: ReturnType<typeof makeTestApp>): Promise<string> {
   const res = await app.request('/api/projects', {
@@ -33,9 +38,17 @@ async function putFile(
   expect(res.status).toBe(200);
 }
 
+interface GrepMatch {
+  path: string;
+  line: number;
+  before: string[];
+  match: string;
+  after: string[];
+}
+
 interface GrepResponse {
   ok: boolean;
-  matches: { path: string; line: number; text: string }[];
+  matches: GrepMatch[];
   truncated: boolean;
 }
 
@@ -44,7 +57,7 @@ describe('routes/files-grep', () => {
     await ensureMigrated();
   });
 
-  it('finds substring matches across multiple files, line-numbered', async () => {
+  it('finds literal substring matches across multiple files', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
     await putFile(app, projectId, 'a.jsx', 'line1\nhello world\nline3\n');
@@ -60,26 +73,105 @@ describe('routes/files-grep', () => {
     const body = (await res.json()) as GrepResponse;
     expect(body.ok).toBe(true);
     expect(body.truncated).toBe(false);
-    expect(body.matches).toEqual([
-      { path: 'a.jsx', line: 2, text: 'hello world' },
-      { path: 'c.jsx', line: 1, text: 'hello again' },
-      { path: 'c.jsx', line: 2, text: 'hello once more' },
+    expect(body.matches.map((m) => `${m.path}:${m.line}`)).toEqual([
+      'a.jsx:2',
+      'c.jsx:1',
+      'c.jsx:2',
     ]);
   });
 
-  it('respects the `include` substring filter on file path', async () => {
+  it('treats pattern as a regex (case-insensitive by default)', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
-    await putFile(app, projectId, 'src/foo.jsx', 'needle\n');
-    await putFile(app, projectId, 'docs/readme.md', 'needle\n');
+    await putFile(app, projectId, 'a.txt', 'HELLO world\nhello again\nHeLLo lower\n');
 
     const res = await app.request(`/api/projects/${projectId}/grep`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ pattern: 'needle', include: 'src' }),
+      body: JSON.stringify({ pattern: 'hello' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    expect(body.matches.map((m) => m.line)).toEqual([1, 2, 3]);
+  });
+
+  it('supports regex special chars (e.g. dot wildcard)', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'a.txt', 'foo\nfxo\nfaa\nf!o\n');
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'f.o' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    // f.o matches foo, fxo, f!o (not faa — "aa" no match for .o)
+    expect(body.matches.map((m) => m.match).sort()).toEqual(['f!o', 'foo', 'fxo']);
+  });
+
+  it('includes ±2 lines of context per match', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'a.txt', 'L1\nL2\nL3\nMATCH\nL5\nL6\nL7\n');
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'MATCH' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    expect(body.matches).toHaveLength(1);
+    const m = body.matches[0]!;
+    expect(m.line).toBe(4);
+    expect(m.before).toEqual(['L2', 'L3']);
+    expect(m.match).toBe('MATCH');
+    expect(m.after).toEqual(['L5', 'L6']);
+  });
+
+  it('clips context near the file start / end', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'a.txt', 'MATCH at top\n');
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'MATCH' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    expect(body.matches[0]!.before).toEqual([]);
+    expect(body.matches[0]!.after).toEqual(['']); // trailing newline → empty last line
+  });
+
+  it('honors `path` as a directory prefix scope', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'src/foo.jsx', 'needle\n');
+    await putFile(app, projectId, 'docs/readme.md', 'needle\n');
+    await putFile(app, projectId, 'srcbad/other.txt', 'needle\n'); // prefix string match shouldn't hit "srcbad"
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'needle', path: 'src/' }),
     });
     const body = (await res.json()) as GrepResponse;
     expect(body.matches.map((m) => m.path)).toEqual(['src/foo.jsx']);
+  });
+
+  it('honors `path` as a single file scope (exact match)', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'a.txt', 'needle\n');
+    await putFile(app, projectId, 'b.txt', 'needle\n');
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'needle', path: 'a.txt' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    expect(body.matches.map((m) => m.path)).toEqual(['a.txt']);
   });
 
   it('returns empty matches when nothing hits', async () => {
@@ -97,7 +189,24 @@ describe('routes/files-grep', () => {
     expect(body.truncated).toBe(false);
   });
 
-  it('rejects empty pattern with 400', async () => {
+  it('caps results at 100 matches with truncated:true', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    // 150 lines containing the pattern
+    const lines = Array.from({ length: 150 }, (_, i) => `hit ${i + 1}`).join('\n');
+    await putFile(app, projectId, 'big.txt', lines);
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pattern: 'hit' }),
+    });
+    const body = (await res.json()) as GrepResponse;
+    expect(body.matches).toHaveLength(100);
+    expect(body.truncated).toBe(true);
+  });
+
+  it('rejects empty pattern with 400 bad_request', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
 
@@ -107,8 +216,22 @@ describe('routes/files-grep', () => {
       body: JSON.stringify({ pattern: '' }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it('rejects invalid regex with 400 bad_pattern', async () => {
+    const app = makeTestApp();
+    const projectId = await createProject(app);
+    await putFile(app, projectId, 'x.txt', 'anything\n');
+
+    const res = await app.request(`/api/projects/${projectId}/grep`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // Unmatched opening group → invalid regex
+      body: JSON.stringify({ pattern: '(unclosed' }),
+    });
+    expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('bad_request');
+    expect(body.error).toBe('bad_pattern');
   });
 
   it('truncates per-line text to 300 chars', async () => {
@@ -123,6 +246,6 @@ describe('routes/files-grep', () => {
       body: JSON.stringify({ pattern: 'needle' }),
     });
     const body = (await res.json()) as GrepResponse;
-    expect(body.matches[0]?.text.length).toBe(300);
+    expect(body.matches[0]?.match.length).toBe(300);
   });
 });

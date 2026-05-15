@@ -34,6 +34,7 @@ import { useWorkspace } from '@/state/workspace';
 import { ZOOM_MAX, ZOOM_MIN } from '@/state/types';
 import type { CommentPin, DrawShape } from '@/state/types';
 import { api } from '@/lib/api';
+import { useProjectFiles } from '@/state/use-project-files';
 import { claudeComplete } from '@/lib/claude-complete';
 import { IframeBridge } from '@/lib/iframe-bridge';
 import {
@@ -158,8 +159,10 @@ export function PreviewPanel() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const bridgeRef = useRef<IframeBridge | null>(null);
 
-  const [files, setFiles] = useState<FetchedFile[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Files snapshot — pulled from the workspace-wide shared cache keyed by
+  // `(projectId, filesChangedAt)`. Same hook is intended for FileTree /
+  // FilePreviewPane to consume so they don't each re-fetch.
+  const { files, loadError } = useProjectFiles(state.projectId, state.filesChangedAt ?? 0);
   const [tweaksAvailable, setTweaksAvailable] = useState(false);
   const [editSelection, setEditSelection] = useState<EditSelectionSummary | null>(null);
   // Free-form note for the Draw dock — local because it's purely transient
@@ -191,51 +194,8 @@ export function PreviewPanel() {
     filesRef.current = files;
   }, [files]);
 
-  // ───────── load files for the current project ─────────
-  useEffect(() => {
-    if (!state.projectId) return;
-    let cancelled = false;
-    setLoadError(null);
-
-    (async () => {
-      try {
-        const list = await api<ListFilesResponse>(
-          `/api/projects/${encodeURIComponent(state.projectId)}/files`,
-        );
-        const fetched = await Promise.all(
-          list.files.map(async (record: FileRecord) => {
-            // Wave 1 follow-up: pass expectText so api() returns the raw
-            // worker response instead of JSON-parsing then re-stringifying
-            // when content-type is application/json. Without this, .json
-            // source files round-trip through JSON.parse → JSON.stringify
-            // and lose original formatting (indentation / key order /
-            // trailing newline). Binary files (image/*) aren't expected on
-            // this code path — agent only writes text files; if that ever
-            // changes, switch to expectArrayBuffer here for binary mimes.
-            const content = await api<string>(
-              `/api/projects/${encodeURIComponent(state.projectId)}/files/${encodeURI(record.path)}`,
-              { expectText: true },
-            );
-            return {
-              path: record.path,
-              mimeType: record.mimeType,
-              content: typeof content === 'string' ? content : JSON.stringify(content),
-            } satisfies FetchedFile;
-          }),
-        );
-        if (!cancelled) setFiles(fetched);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err instanceof Error ? err.message : String(err));
-          setFiles([]);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [state.projectId, state.filesChangedAt]);
+  // (files load handled by useProjectFiles above — module-level cache deduplicates
+  //  across PreviewPanel re-mounts and future FileTree / FilePreviewPane consumers.)
 
   // ───────── build srcdoc whenever files change ─────────
   // 空项目时 srcdoc='' → 渲染 placeholder（不再 fixture fallback；让用户看到自己的产物）

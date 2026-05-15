@@ -109,4 +109,72 @@ describe('snip', () => {
     await t.execute!({ from_id: 'm1', to_id: 'm2' }, ctx);
     expect(fetchCalled).toBe(false);
   });
+
+  describe('invalid-id friendly error (qx alignment)', () => {
+    it('returns an error with the valid id list when from_id is hallucinated', async () => {
+      const t = snipTool({ getChatId: () => 'c1' });
+      const messages = [
+        { role: 'user', content: 'first task [id:m0001]' },
+        { role: 'user', content: 'second [id:m0002]' },
+        { role: 'user', content: 'third [id:m0003]' },
+      ];
+      const r = (await t.execute!(
+        { from_id: 'm9999', to_id: 'm0003' },
+        { ...ctx, messages: messages as never },
+      )) as string;
+      expect(r).toMatch(/error/i);
+      expect(r).toMatch(/snip id not found/i);
+      expect(r).toContain('from_id="m9999"');
+      expect(r).toMatch(/Valid IDs \(3 total\)/);
+      expect(r).toContain('m0001');
+      expect(r).toContain('m0002');
+      expect(r).toContain('m0003');
+    });
+
+    it('returns error when to_id is hallucinated', async () => {
+      const t = snipTool({ getChatId: () => 'c1' });
+      const messages = [{ role: 'user', content: 'task [id:m0001]' }];
+      const r = (await t.execute!(
+        { from_id: 'm0001', to_id: 'm9999' },
+        { ...ctx, messages: messages as never },
+      )) as string;
+      expect(r).toMatch(/snip id not found/i);
+      expect(r).toContain('to_id="m9999"');
+    });
+
+    it('accepts registration when both ids exist', async () => {
+      const t = snipTool({ getChatId: () => 'c1' });
+      const messages = [
+        { role: 'user', content: '[id:m0001]' },
+        { role: 'user', content: '[id:m0002]' },
+      ];
+      const r = (await t.execute!(
+        { from_id: 'm0001', to_id: 'm0002' },
+        { ...ctx, messages: messages as never },
+      )) as string;
+      expect(r).toMatch(/registered/);
+    });
+
+    it('skips validation when messages array is empty (back-compat)', async () => {
+      // Old tests don't pass messages — keep them working by short-circuiting.
+      const t = snipTool({ getChatId: () => 'c1' });
+      const r = (await t.execute!({ from_id: 'mZZZ', to_id: 'mAAA' }, ctx)) as string;
+      expect(r).toMatch(/registered/);
+    });
+
+    it('finds ids inside array-of-parts content (AI SDK 6 user message shape)', async () => {
+      const t = snipTool({ getChatId: () => 'c1' });
+      const messages = [
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'hello [id:m0042]' }],
+        },
+      ];
+      const r = (await t.execute!(
+        { from_id: 'm0042', to_id: 'm0042' },
+        { ...ctx, messages: messages as never },
+      )) as string;
+      expect(r).toMatch(/registered/);
+    });
+  });
 });

@@ -100,10 +100,52 @@ export function snipTool(ctx: SnipContext) {
         .optional()
         .describe('Brief note on why this range is no longer needed (optional, for telemetry)'),
     }),
-    execute: async ({ from_id, to_id, reason }) => {
+    execute: async ({ from_id, to_id, reason }, { messages }) => {
       const chatId = ctx.getChatId();
+      // Extract all [id:mNNNN] tags from the message history so we can catch
+      // hallucinated IDs at register time (matches official's `qx(chatId,id)`
+      // WeakRef reverse lookup, but operating on the AI SDK `messages` arg).
+      const validIds = collectMessageIds(messages);
+      if (validIds.size > 0) {
+        const missing: string[] = [];
+        if (!validIds.has(from_id)) missing.push(`from_id="${from_id}"`);
+        if (from_id !== to_id && !validIds.has(to_id)) missing.push(`to_id="${to_id}"`);
+        if (missing.length > 0) {
+          const sample = Array.from(validIds).slice(0, 10).join(', ');
+          const total = validIds.size;
+          const more = total > 10 ? ` (and ${total - 10} more)` : '';
+          return `Error: snip id not found (${missing.join(', ')}). Valid IDs (${total} total): ${sample}${more}. Copy the exact [id:mNNNN] tag from a user message — do not guess.`;
+        }
+      }
       const { totalQueued } = _registerSnip(chatId, from_id, to_id, reason);
       return `Snip registered (${totalQueued} queued).`;
     },
   });
+}
+
+/** Walk AI SDK 6 message parts and pluck every `[id:mNNNN]` tag value. */
+function collectMessageIds(messages: unknown): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(messages)) return ids;
+  const ID_REGEX = /\[id:([^\]]+)\]/g;
+  for (const msg of messages) {
+    if (!msg || typeof msg !== 'object') continue;
+    const content = (msg as { content?: unknown }).content;
+    if (typeof content === 'string') {
+      for (const m of content.matchAll(ID_REGEX)) ids.add(m[1]!);
+      continue;
+    }
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        const text =
+          part && typeof part === 'object' && 'text' in part
+            ? (part as { text?: unknown }).text
+            : undefined;
+        if (typeof text === 'string') {
+          for (const m of text.matchAll(ID_REGEX)) ids.add(m[1]!);
+        }
+      }
+    }
+  }
+  return ids;
 }

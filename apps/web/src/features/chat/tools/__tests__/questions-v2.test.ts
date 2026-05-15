@@ -138,4 +138,29 @@ describe('questions_v2', () => {
     );
     expect(fetchCalled).toBe(false);
   });
+
+  describe('questions-v2-show CustomEvent dispatch', () => {
+    it('dispatches a `questions-v2-show` CustomEvent with the spec', async () => {
+      interface ShowDetail {
+        spec: { title: string; questions: unknown[] };
+      }
+      const events: ShowDetail[] = [];
+      const handler = (e: Event) =>
+        events.push((e as CustomEvent<ShowDetail>).detail);
+      window.addEventListener('questions-v2-show', handler as EventListener);
+
+      await questionsV2Tool().execute!(
+        {
+          title: 'Quick questions',
+          questions: [{ id: 'audience', kind: 'text-options', title: 'Who is this for?' }],
+        },
+        ctx,
+      );
+
+      window.removeEventListener('questions-v2-show', handler as EventListener);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.spec.title).toBe('Quick questions');
+      expect(events[0]?.spec.questions).toHaveLength(1);
+    });
+  });
 });

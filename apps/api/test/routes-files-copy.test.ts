@@ -3,10 +3,10 @@ import { ensureMigrated } from './helpers/miniflare-env.js';
 import { makeTestApp } from './helpers/test-app.js';
 import type { Project } from '@open-design/contracts';
 
-// Real route shape (apps/api/src/routes/files-copy.ts):
+// Per-file copy/rename batch:
 //   POST /api/projects/:projectId/files/copy
-//        body: { sources: string[], destDir: string }
-//        → 200 { ok: true, copied: { from, to }[] } | 400
+//        body: { files: [{src, dest, move?, asset?}] }
+//        → 200 { ok: true, results: [{src, dest, moved}, ...] } | 400
 
 async function createProject(app: ReturnType<typeof makeTestApp>): Promise<string> {
   const res = await app.request('/api/projects', {
@@ -33,12 +33,17 @@ async function putFile(
   expect(res.status).toBe(200);
 }
 
+interface CopyResponse {
+  ok: boolean;
+  results: { src: string; dest: string; moved: boolean }[];
+}
+
 describe('routes/files-copy', () => {
   beforeAll(async () => {
     await ensureMigrated();
   });
 
-  it('copies an existing file to a new dest dir, preserving filename', async () => {
+  it('copies a file to its dest path with per-file dest', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
     await putFile(app, projectId, 'src/App.jsx', 'export default () => null;');
@@ -46,14 +51,13 @@ describe('routes/files-copy', () => {
     const res = await app.request(`/api/projects/${projectId}/files/copy`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sources: ['src/App.jsx'], destDir: 'backup' }),
+      body: JSON.stringify({ files: [{ src: 'src/App.jsx', dest: 'backup/App.jsx' }] }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; copied: { from: string; to: string }[] };
+    const body = (await res.json()) as CopyResponse;
     expect(body.ok).toBe(true);
-    expect(body.copied).toEqual([{ from: 'src/App.jsx', to: 'backup/App.jsx' }]);
+    expect(body.results).toEqual([{ src: 'src/App.jsx', dest: 'backup/App.jsx', moved: false }]);
 
-    // Sanity: the copy is readable.
     const fetchRes = await app.request(
       `/api/projects/${projectId}/files/${encodeURIComponent('backup/App.jsx')}`,
     );
@@ -61,21 +65,30 @@ describe('routes/files-copy', () => {
     expect(await fetchRes.text()).toBe('export default () => null;');
   });
 
-  it('strips a trailing slash on destDir', async () => {
+  it('renames a file when move:true (src deleted)', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
-    await putFile(app, projectId, 'a.txt', 'hi');
+    await putFile(app, projectId, 'old.md', 'doc');
 
     const res = await app.request(`/api/projects/${projectId}/files/copy`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sources: ['a.txt'], destDir: 'archive/' }),
+      body: JSON.stringify({ files: [{ src: 'old.md', dest: 'new.md', move: true }] }),
     });
-    const body = (await res.json()) as { copied: { from: string; to: string }[] };
-    expect(body.copied[0]?.to).toBe('archive/a.txt');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CopyResponse;
+    expect(body.results[0]).toEqual({ src: 'old.md', dest: 'new.md', moved: true });
+
+    // src is gone
+    const srcRes = await app.request(`/api/projects/${projectId}/files/old.md`);
+    expect(srcRes.status).toBe(404);
+    // dest readable
+    const dstRes = await app.request(`/api/projects/${projectId}/files/new.md`);
+    expect(dstRes.status).toBe(200);
+    expect(await dstRes.text()).toBe('doc');
   });
 
-  it('silently skips sources that do not exist (returns empty copied)', async () => {
+  it('records moved:false for missing src entries (silently skipped)', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
     await putFile(app, projectId, 'real.txt', 'present');
@@ -83,29 +96,82 @@ describe('routes/files-copy', () => {
     const res = await app.request(`/api/projects/${projectId}/files/copy`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sources: ['ghost.txt', 'real.txt'], destDir: 'dst' }),
+      body: JSON.stringify({
+        files: [
+          { src: 'ghost.txt', dest: 'dst/ghost.txt' },
+          { src: 'real.txt', dest: 'dst/real.txt' },
+        ],
+      }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { copied: { from: string; to: string }[] };
-    expect(body.copied).toEqual([{ from: 'real.txt', to: 'dst/real.txt' }]);
+    const body = (await res.json()) as CopyResponse;
+    expect(body.results.map((r) => r.src)).toEqual(['ghost.txt', 'real.txt']);
+    // Real file copied; ghost row exists in results with moved:false but
+    // doesn't actually create a phantom dest row.
+    const ghostRes = await app.request(
+      `/api/projects/${projectId}/files/${encodeURIComponent('dst/ghost.txt')}`,
+    );
+    expect(ghostRes.status).toBe(404);
+    const realRes = await app.request(
+      `/api/projects/${projectId}/files/${encodeURIComponent('dst/real.txt')}`,
+    );
+    expect(realRes.status).toBe(200);
   });
 
-  it('rejects malformed body with 400', async () => {
+  it('rejects malformed body with 400 bad_request', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
 
-    // Missing destDir.
     const res = await app.request(`/api/projects/${projectId}/files/copy`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sources: ['x.txt'] }),
+      body: JSON.stringify({ sources: ['x.txt'] }), // old shape
     });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('bad_request');
   });
 
-  it('reuses the same blob (no re-upload) — the sha256 stays identical', async () => {
+  it('copies cross-project src via /projects/<id>/<path> syntax', async () => {
+    const app = makeTestApp();
+    const sourceId = await createProject(app);
+    const destId = await createProject(app);
+    await putFile(app, sourceId, 'shared.css', 'h1{}');
+
+    const res = await app.request(`/api/projects/${destId}/files/copy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        files: [{ src: `/projects/${sourceId}/shared.css`, dest: 'imported.css' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CopyResponse;
+    expect(body.results[0]?.dest).toBe('imported.css');
+
+    const fetched = await app.request(`/api/projects/${destId}/files/imported.css`);
+    expect(fetched.status).toBe(200);
+    expect(await fetched.text()).toBe('h1{}');
+  });
+
+  it('rejects cross-project move:true (security guard)', async () => {
+    const app = makeTestApp();
+    const sourceId = await createProject(app);
+    const destId = await createProject(app);
+    await putFile(app, sourceId, 'mine.txt', 'x');
+    const res = await app.request(`/api/projects/${destId}/files/copy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        files: [{ src: `/projects/${sourceId}/mine.txt`, dest: 'stolen.txt', move: true }],
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('cross_project_move_forbidden');
+  });
+
+  it('reuses the same blob (sha256 stays identical)', async () => {
     const app = makeTestApp();
     const projectId = await createProject(app);
     await putFile(app, projectId, 'shared.txt', 'one body');
@@ -119,7 +185,9 @@ describe('routes/files-copy', () => {
     await app.request(`/api/projects/${projectId}/files/copy`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sources: ['shared.txt'], destDir: 'mirror' }),
+      body: JSON.stringify({
+        files: [{ src: 'shared.txt', dest: 'mirror/shared.txt' }],
+      }),
     });
 
     const after = await app.request(`/api/projects/${projectId}/files`);

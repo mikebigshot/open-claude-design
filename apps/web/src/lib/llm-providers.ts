@@ -124,3 +124,56 @@ const FAST_MODEL_FOR_PROVIDER: Readonly<Record<LLMProvider, string>> = {
 export function buildFastModel(provider: LLMProvider, apiKey: string): LanguageModel {
   return buildLanguageModel(provider, apiKey, FAST_MODEL_FOR_PROVIDER[provider]);
 }
+
+/**
+ * Provider capability matrix for Anthropic server tools (Phase 6).
+ *
+ * `web_fetch` is an Anthropic server tool — when the provider routes through
+ * the Anthropic API (anthropic direct or openrouter passthrough on a Claude
+ * model), the server fetches the URL, caches it, and emits citations. On
+ * other providers we register our client-side worker-proxied fallback.
+ */
+const SERVER_TOOL_SUPPORT: Record<string, ReadonlySet<LLMProvider>> = {
+  // OpenRouter forwards `tools` of type `web_search_20250305` / `web_fetch`
+  // straight to the Anthropic API when the model is `anthropic/claude-*`.
+  // Routing on a per-model basis at runtime needs an additional check
+  // beyond just the provider, so right now we conservatively enable only
+  // for `anthropic` direct.
+  web_fetch: new Set<LLMProvider>(['anthropic']),
+};
+
+export function supportsServerTool(toolName: string, provider: LLMProvider): boolean {
+  const set = SERVER_TOOL_SUPPORT[toolName];
+  return set ? set.has(provider) : false;
+}
+
+/**
+ * Build the map of provider-defined (server-executed) tools for the given
+ * provider. The returned shape matches the AI SDK `tools` record: keys are
+ * the tool names the model sees (`web_fetch`), values are provider-defined
+ * tool descriptors (`type: 'provider-defined'`, `id: 'anthropic.web_fetch_*'`).
+ *
+ * Caller is expected to **merge** this into the regular client tool map
+ * (the entries here override the client `web_fetch` so Anthropic-routed
+ * requests get server-side fetch + citations instead of our worker proxy).
+ *
+ * Returns an empty map for providers without server-tool support — the
+ * caller's regular client-side tools stay in place.
+ */
+export function buildServerToolMap(
+  provider: LLMProvider,
+  apiKey: string,
+): Record<string, unknown> {
+  if (provider !== 'anthropic') return {};
+  // Same `dangerous-direct-browser-access` opt-in as buildLanguageModel —
+  // server tools share auth with the language model call.
+  const anthropicProvider = createAnthropic({
+    apiKey,
+    headers: { 'anthropic-dangerous-direct-browser-access': 'true' },
+  });
+  return {
+    // Use the newer 2026-02-09 release — current Claude models support it.
+    // Older models (pre-2026-02-09) auto-downgrade server-side per Anthropic.
+    web_fetch: anthropicProvider.tools.webFetch_20260209(),
+  };
+}

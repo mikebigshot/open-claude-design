@@ -32,6 +32,7 @@ export function screenshotUserViewTool(ctx: ScreenshotUserViewContext) {
       try {
         const result = await requestFromIframe<ScreenshotResponse>({
           chatId: ctx.getChatId(),
+          viewport: 'user',
           type: 'AGENT_SCREENSHOT',
           timeoutMs: 30_000,
           signal: abortSignal,

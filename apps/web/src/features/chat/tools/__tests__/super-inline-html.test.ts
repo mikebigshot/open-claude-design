@@ -41,13 +41,22 @@ function makeBytesResponse(bytes: Uint8Array, type: string, status = 200): Respo
 function makeMockEnv(files: Record<string, { body: string | Uint8Array; type: string }>) {
   const writes: Array<{ url: string; body: string }> = [];
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+    // buildAssetUrl percent-encodes each path segment, so decode before
+    // matching against unencoded fixture keys (e.g., `hero@1x.png`).
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(url);
+      } catch {
+        return url;
+      }
+    })();
     if (init?.method === 'PUT') {
       const text = typeof init.body === 'string' ? init.body : '';
-      writes.push({ url, body: text });
+      writes.push({ url: decoded, body: text });
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }
     for (const [path, val] of Object.entries(files)) {
-      if (url.endsWith(`/files/${path}`)) {
+      if (decoded.endsWith(`/files/${path}`)) {
         return typeof val.body === 'string'
           ? makeTextResponse(val.body, val.type)
           : makeBytesResponse(val.body, val.type);
@@ -205,5 +214,246 @@ describe('superInlineHtmlTool', () => {
     const t = asTool(superInlineHtmlTool('p1'));
     expect(t.description).toMatch(/self-contained|standalone|single/i);
     expect(t.description).toMatch(/inline/i);
+  });
+
+  // ── Phase 4 tail: extended asset coverage ─────────────────────────
+  it('inlines a <video poster> + <video src> as data URIs', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <video src="clip.mp4" poster="thumb.jpg"></video>
+    </body></html>`;
+    const mp4 = new Uint8Array([0, 0, 0, 1]);
+    const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/clip.mp4': { body: mp4, type: 'video/mp4' },
+      'src/thumb.jpg': { body: jpg, type: 'image/jpeg' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    expect(out.assetsInlined).toBeGreaterThanOrEqual(2);
+    const written = writes[0]?.body ?? '';
+    expect(written).toMatch(/src="data:video\/mp4;base64,/);
+    expect(written).toMatch(/poster="data:image\/jpeg;base64,/);
+  });
+
+  it('inlines an <audio src> as a data URI', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <audio src="sound.mp3" controls></audio>
+    </body></html>`;
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/sound.mp3': { body: new Uint8Array([0xff, 0xfb, 0x90, 0x44]), type: 'audio/mpeg' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    expect(writes[0]?.body ?? '').toMatch(/src="data:audio\/mpeg;base64,/);
+  });
+
+  it('inlines <link rel="icon"> + variants as data URIs', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}
+      <link rel="icon" href="favicon.ico">
+      <link rel="apple-touch-icon" href="apple.png">
+    </head><body>x</body></html>`;
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/favicon.ico': { body: new Uint8Array([0, 0, 1, 0]), type: 'image/x-icon' },
+      'src/apple.png': { body: new Uint8Array([137, 80, 78, 71]), type: 'image/png' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    expect(body).toMatch(/href="data:image\/x-icon;base64,/);
+    expect(body).toMatch(/href="data:image\/png;base64,/);
+    expect(body).not.toContain('favicon.ico');
+    expect(body).not.toContain('apple.png');
+  });
+
+  it('inlines <source src> inside <video>/<audio>', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <video controls><source src="clip.webm" type="video/webm"></video>
+    </body></html>`;
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/clip.webm': { body: new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]), type: 'video/webm' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    expect(writes[0]?.body ?? '').toMatch(/src="data:video\/webm;base64,/);
+  });
+
+  // ── Phase 4 tail extension: 10/10 asset families via DOMParser ────────
+  it('inlines every <img srcset> candidate as data URIs (responsive imgs)', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <img src="hero@1x.png" srcset="hero@1x.png 1x, hero@2x.png 2x, hero@3x.png 3x">
+    </body></html>`;
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/hero@1x.png': { body: png, type: 'image/png' },
+      'src/hero@2x.png': { body: png, type: 'image/png' },
+      'src/hero@3x.png': { body: png, type: 'image/png' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    // srcset descriptors (1x/2x/3x) preserved
+    expect(body).toMatch(/data:image\/png;base64,[A-Za-z0-9+/=]+ 1x/);
+    expect(body).toMatch(/data:image\/png;base64,[A-Za-z0-9+/=]+ 2x/);
+    expect(body).toMatch(/data:image\/png;base64,[A-Za-z0-9+/=]+ 3x/);
+    expect(body).not.toContain('hero@1x.png');
+    expect(body).not.toContain('hero@2x.png');
+    expect(body).not.toContain('hero@3x.png');
+  });
+
+  it('inlines <picture><source srcset> with multiple candidates', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <picture>
+        <source type="image/avif" srcset="banner.avif 800w, banner-2x.avif 1600w">
+        <img src="banner.jpg" alt="banner">
+      </picture>
+    </body></html>`;
+    const avif1 = new Uint8Array([0, 0, 0, 1]);
+    const avif2 = new Uint8Array([0, 0, 0, 2]);
+    const jpg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/banner.avif': { body: avif1, type: 'image/avif' },
+      'src/banner-2x.avif': { body: avif2, type: 'image/avif' },
+      'src/banner.jpg': { body: jpg, type: 'image/jpeg' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    expect(body).toMatch(/data:image\/avif;base64,[A-Za-z0-9+/=]+ 800w/);
+    expect(body).toMatch(/data:image\/avif;base64,[A-Za-z0-9+/=]+ 1600w/);
+    expect(body).not.toContain('banner.avif');
+    expect(body).not.toContain('banner-2x.avif');
+  });
+
+  it('inlines svg <image href> + svg <use href> + xlink:href', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <svg viewBox="0 0 100 100">
+        <image href="bg.png" x="0" y="0" width="100" height="100"></image>
+        <use href="sprite.svg#icon-a"></use>
+        <use xlink:href="sprite.svg#icon-b"></use>
+      </svg>
+    </body></html>`;
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><g id="icon-a"></g></svg>';
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/bg.png': { body: png, type: 'image/png' },
+      'src/sprite.svg': { body: svg, type: 'image/svg+xml' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    // image href rewritten
+    expect(body).toMatch(/data:image\/png;base64,/);
+    expect(body).not.toContain('"bg.png"');
+    // use href preserves fragment after rewrite to data: URI of SVG
+    expect(body).toMatch(/data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+#icon-a/);
+    expect(body).toMatch(/data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+#icon-b/);
+    expect(body).not.toContain('sprite.svg#icon-a');
+    expect(body).not.toContain('sprite.svg#icon-b');
+  });
+
+  it('rewrites url(...) inside an inline <style> block (background + @font-face)', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}
+      <style>
+        @font-face { font-family: x; src: url('font.woff2') format('woff2'); }
+        body { background: url("hero.png") center / cover; }
+      </style>
+    </head><body>hi</body></html>`;
+    const woff = new Uint8Array([0x77, 0x4f, 0x46, 0x32]);
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/font.woff2': { body: woff, type: 'font/woff2' },
+      'src/hero.png': { body: png, type: 'image/png' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    expect(body).toMatch(/url\(['"]?data:font\/woff2;base64,[A-Za-z0-9+/=]+['"]?\)/);
+    expect(body).toMatch(/url\(['"]?data:image\/png;base64,[A-Za-z0-9+/=]+['"]?\)/);
+    expect(body).not.toContain('font.woff2');
+    expect(body).not.toContain('hero.png');
+  });
+
+  it('rewrites url(...) inside an inline [style] attribute on any element', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}</head><body>
+      <div style="background-image: url('cover.png'); color: red;">x</div>
+    </body></html>`;
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+      'src/cover.png': { body: png, type: 'image/png' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; assetsInlined: number };
+    expect(out.ok).toBe(true);
+    const body = writes[0]?.body ?? '';
+    expect(body).toMatch(/url\(['"]?data:image\/png;base64,/);
+    expect(body).not.toContain('cover.png');
+  });
+
+  it('skips data: and absolute URLs in srcset / url() (no rewrite, no warning)', async () => {
+    const html = `<html><head>${THUMBNAIL_TEMPLATE}
+      <style>body { background: url('https://cdn.example/x.png'); }</style>
+    </head><body>
+      <img srcset="data:image/png;base64,iVBORw0KGgo= 1x, https://cdn.example/img.png 2x">
+    </body></html>`;
+    const { fetchImpl, writes } = makeMockEnv({
+      'src/index.html': { body: html, type: 'text/html' },
+    });
+    const t = asTool(superInlineHtmlTool('p1', { fetchImpl }));
+    const out = (await t.execute({
+      input_path: 'src/index.html',
+      output_path: 'out.html',
+    })) as { ok: true; warnings: string[] };
+    expect(out.ok).toBe(true);
+    // Source URLs preserved verbatim.
+    const body = writes[0]?.body ?? '';
+    expect(body).toContain('https://cdn.example/x.png');
+    expect(body).toContain('data:image/png;base64,iVBORw0KGgo= 1x');
+    expect(body).toContain('https://cdn.example/img.png 2x');
+    // No spurious warnings for skipped (already-absolute) refs.
+    expect(out.warnings.filter((w) => w.includes('cdn.example'))).toHaveLength(0);
   });
 });

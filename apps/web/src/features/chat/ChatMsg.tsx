@@ -192,6 +192,106 @@ const ToolStateBadge = styled.span<{ $state: string }>`
   }};
 `;
 
+// ───── present_fs_item_for_download — chat-history download card ─────
+//
+// Rendered inline in the assistant message stream (NOT inside the framed
+// tool block) so the user can re-trigger a download of a single file from
+// history. Folder/project zips are ephemeral (object URL revoked after
+// click) — those cards stay informational and announce "Downloaded N B".
+
+const DownloadCard = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: ${(p) => p.theme.colors.bg50};
+  border: 1px solid ${(p) => p.theme.colors.line100};
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+`;
+
+const DownloadCardBody = styled.div`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+`;
+
+const DownloadCardName = styled.span`
+  font-weight: 600;
+  color: ${(p) => p.theme.colors.fg100};
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const DownloadCardMeta = styled.span`
+  font-size: 11px;
+  color: ${(p) => p.theme.colors.fg300};
+`;
+
+const DownloadCardLink = styled.a`
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid ${(p) => p.theme.colors.line100};
+  border-radius: 999px;
+  background: ${(p) => p.theme.colors.bg100 ?? 'transparent'};
+  color: ${(p) => p.theme.colors.fg100};
+  text-decoration: none;
+  font-size: 11.5px;
+
+  &:hover,
+  &:focus {
+    background: ${(p) => p.theme.colors.bg200};
+    outline: none;
+  }
+`;
+
+const DownloadCardError = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: ${(p) => p.theme.colors.bg50};
+  border: 1px solid ${(p) => p.theme.colors.danger ?? '#ef4444'};
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: ${(p) => p.theme.colors.danger ?? '#ef4444'};
+`;
+
+const DownloadCardPlaceholder = styled.div`
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: ${(p) => p.theme.colors.bg50};
+  border: 1px dashed ${(p) => p.theme.colors.line100};
+  border-radius: 10px;
+  font-size: 12px;
+  color: ${(p) => p.theme.colors.fg300};
+`;
+
+/** Human-readable size — 24576 → "24.0 KB", 1500000 → "1.4 MB". */
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return `${n} B`;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+/** Derive the display filename for the download card. For kind=file the
+ *  label is already the basename; for folder/project it's a stem that we
+ *  decorate with `.zip` to make it obvious to the user. */
+function downloadFilename(out: {
+  kind: 'file' | 'folder' | 'project';
+  label: string;
+}): string {
+  if (out.kind === 'file') return out.label;
+  return `${out.label}.zip`;
+}
+
 // ───── component ─────
 
 export function ChatMsg({
@@ -337,6 +437,84 @@ export function ChatMsg({
           // user message, not a separate tool-call breadcrumb.
           return;
         }
+      }
+      // US-003 — present_fs_item_for_download renders an inline download
+      // card (not a framed verb chip). Files get a re-clickable <a download>
+      // anchor pointed at the worker URL; folder/project zips are ephemeral
+      // and stay informational.
+      if (generic.type === 'tool-present_fs_item_for_download') {
+        flushTools();
+        if (generic.state === 'input-streaming') {
+          elements.push(
+            <DownloadCardPlaceholder key={`dl-${i}-${generic.toolCallId}`}>
+              Preparing download…
+            </DownloadCardPlaceholder>,
+          );
+          return;
+        }
+        const output = generic.output as
+          | {
+              ok: true;
+              kind: 'file' | 'folder' | 'project';
+              path: string;
+              label: string;
+              bytes: number;
+              downloadUrl?: string;
+            }
+          | { ok: false; error: string; message: string }
+          | undefined;
+        if (output && output.ok === false) {
+          elements.push(
+            <DownloadCardError
+              key={`dl-${i}-${generic.toolCallId}`}
+              role="status"
+              aria-live="polite"
+            >
+              <strong>Download failed</strong>
+              <span>{output.message}</span>
+            </DownloadCardError>,
+          );
+          return;
+        }
+        if (output && output.ok) {
+          const filename = downloadFilename(output);
+          const size = formatBytes(output.bytes);
+          if (output.kind === 'file' && output.downloadUrl) {
+            elements.push(
+              <DownloadCard key={`dl-${i}-${generic.toolCallId}`}>
+                <DownloadCardBody>
+                  <DownloadCardName>{filename}</DownloadCardName>
+                  <DownloadCardMeta>{size}</DownloadCardMeta>
+                </DownloadCardBody>
+                <DownloadCardLink
+                  href={output.downloadUrl}
+                  download={filename}
+                  aria-label={`Download ${filename}`}
+                >
+                  Download
+                </DownloadCardLink>
+              </DownloadCard>,
+            );
+          } else {
+            // Folder / project — informational (zip is ephemeral).
+            elements.push(
+              <DownloadCard key={`dl-${i}-${generic.toolCallId}`} role="status" aria-live="polite">
+                <DownloadCardBody>
+                  <DownloadCardName>{filename}</DownloadCardName>
+                  <DownloadCardMeta>Downloaded · {size}</DownloadCardMeta>
+                </DownloadCardBody>
+              </DownloadCard>,
+            );
+          }
+          return;
+        }
+        // No output yet at output-available — render placeholder.
+        elements.push(
+          <DownloadCardPlaceholder key={`dl-${i}-${generic.toolCallId}`}>
+            Preparing download…
+          </DownloadCardPlaceholder>,
+        );
+        return;
       }
       // Generic verb chip path for all other tools (including questions_v2
       // when input shape is unusable).

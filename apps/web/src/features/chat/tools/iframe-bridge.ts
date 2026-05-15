@@ -19,9 +19,22 @@ const RESPONSE_FOR: Record<AgentRequestType, string> = {
   AGENT_GET_LOGS: 'AGENT_GET_LOGS_RESULT',
 };
 
+/**
+ * Viewport selector for the two-pane architecture (Phase 2):
+ *   - 'user'  → user-visible preview iframe (default; what the user looks at)
+ *   - 'agent' → hidden agent-private iframe (verifier sub-agent uses this so
+ *     it doesn't disturb the user's view)
+ *
+ * The host shell renders both per chat. RPC posts find the right iframe via
+ * the `[data-viewport]` attribute (in addition to `[data-chat-id]`).
+ */
+export type Viewport = 'user' | 'agent';
+
 export interface RequestFromIframeOpts {
   /** Chat id used to find the matching `<iframe data-chat-id="...">` element. */
   chatId: string;
+  /** Which pane to talk to. Default: 'user'. */
+  viewport?: Viewport;
   /** Request type — must be one of the known AGENT_* types. */
   type: AgentRequestType;
   /** Extra fields to merge into the posted message body. */
@@ -32,12 +45,20 @@ export interface RequestFromIframeOpts {
   signal?: AbortSignal;
 }
 
-function findIframe(chatId: string): HTMLIFrameElement | null {
-  const exact = document.querySelector<HTMLIFrameElement>(
+function findIframe(chatId: string, viewport: Viewport): HTMLIFrameElement | null {
+  // Strict match: chat-id + viewport.
+  const strict = document.querySelector<HTMLIFrameElement>(
+    `iframe[data-chat-id="${CSS.escape(chatId)}"][data-viewport="${viewport}"]`,
+  );
+  if (strict) return strict;
+  // Compat fallback: chat-id only (pre-Phase-2 host shells without
+  // `data-viewport` still pair correctly). Prefer the matching chat-id over
+  // an arbitrary iframe.
+  const chatMatch = document.querySelector<HTMLIFrameElement>(
     `iframe[data-chat-id="${CSS.escape(chatId)}"]`,
   );
-  if (exact) return exact;
-  // Fallback: any iframe in the page.
+  if (chatMatch) return chatMatch;
+  // Last resort: any iframe in the page.
   return document.querySelector<HTMLIFrameElement>('iframe');
 }
 
@@ -48,9 +69,12 @@ function nextRequestId(): string {
 }
 
 export async function requestFromIframe<T = unknown>(opts: RequestFromIframeOpts): Promise<T> {
-  const iframe = findIframe(opts.chatId);
+  const viewport: Viewport = opts.viewport ?? 'user';
+  const iframe = findIframe(opts.chatId, viewport);
   if (!iframe || !iframe.contentWindow) {
-    throw new Error(`requestFromIframe: no iframe found for chatId="${opts.chatId}"`);
+    throw new Error(
+      `requestFromIframe: no iframe found for chatId="${opts.chatId}" viewport="${viewport}"`,
+    );
   }
   const requestId = nextRequestId();
   const expectedResponseType = RESPONSE_FOR[opts.type];

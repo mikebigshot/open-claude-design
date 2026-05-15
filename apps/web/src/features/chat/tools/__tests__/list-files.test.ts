@@ -1,82 +1,168 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// list_files — directory-aware listing with path/depth/offset/filter.
+// Was a flat path-only list with empty schema. Aligned behavior renders
+// 📁/📄 emoji, supports `path` scope (dir prefix), `depth` (default 1),
+// `offset` for pagination, `filter` regex; caps at 200 entries per call
+// and reports total/truncated.
+
+import { describe, expect, it } from 'vitest';
 import { listFilesTool } from '../list-files';
+import { asSchema } from './_schema-helpers';
 
 const ctx = { toolCallId: 't1', messages: [], abortSignal: new AbortController().signal };
 
-afterEach(() => vi.restoreAllMocks());
+function mockListResponse(paths: string[]): void {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        files: paths.map((p) => ({
+          path: p,
+          size: 100,
+          mimeType: 'text/plain',
+          updatedAt: '2026-05-13T00:00:00Z',
+        })),
+      }),
+      { status: 200 },
+    )) as typeof fetch;
+}
 
 describe('list_files', () => {
-  it('returns the files array from the worker on 200', async () => {
-    const files = [
-      { path: 'App.jsx', size: 123, mimeType: 'text/jsx', updatedAt: '2026-05-03T00:00:00Z' },
-      { path: 'index.html', size: 50, mimeType: 'text/html', updatedAt: '2026-05-03T00:01:00Z' },
-    ];
-    let calledUrl = '';
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      calledUrl = String(input);
-      return new Response(JSON.stringify({ files }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
+  describe('schema', () => {
+    it('description mentions path / depth / offset / filter / 200', () => {
+      const t = listFilesTool('p');
+      const desc = String(t.description).toLowerCase();
+      expect(desc).toMatch(/path|directory/);
+      expect(desc).toMatch(/depth/);
+      expect(desc).toMatch(/offset|paginate/);
+      expect(desc).toMatch(/200/);
+    });
 
-    const r = await listFilesTool('p1').execute!({}, ctx);
-    expect(r).toEqual({ ok: true, files });
-    expect(calledUrl).toBe('/api/projects/p1/files');
+    it('accepts the new params', () => {
+      const t = listFilesTool('p');
+      expect(
+        asSchema(t.inputSchema)?.safeParse({ path: 'src', depth: 2, offset: 0, filter: '\\.ts$' })
+          .success,
+      ).toBe(true);
+    });
+
+    it('accepts empty input (default = root, depth 1)', () => {
+      const t = listFilesTool('p');
+      expect(asSchema(t.inputSchema)?.safeParse({}).success).toBe(true);
+    });
   });
 
-  it('returns ok with empty array when project has no files', async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ files: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })) as typeof fetch;
-    const r = await listFilesTool('p1').execute!({}, ctx);
-    expect(r).toEqual({ ok: true, files: [] });
+  describe('rendering', () => {
+    it('renders 📁 for directories and 📄 for files at depth 1', async () => {
+      mockListResponse([
+        'index.html',
+        'src/App.jsx',
+        'src/components/Header.tsx',
+        'README.md',
+      ]);
+      const r = (await listFilesTool('p').execute!({}, ctx)) as string;
+      expect(r).toContain('📁 src');
+      expect(r).toContain('📄 index.html');
+      expect(r).toContain('📄 README.md');
+      // src/App.jsx should NOT appear at depth=1 (it's deeper than 1 level)
+      expect(r).not.toContain('App.jsx');
+    });
+
+    it('returns "(empty directory)" when the path has no entries', async () => {
+      mockListResponse(['unrelated.md']);
+      const r = (await listFilesTool('p').execute!({ path: 'nope' }, ctx)) as string;
+      expect(r).toMatch(/empty directory/);
+    });
+
+    it('scopes to a subdirectory via `path`', async () => {
+      mockListResponse([
+        'src/App.jsx',
+        'src/components/Header.tsx',
+        'src/components/Footer.tsx',
+        'docs/readme.md',
+      ]);
+      const r = (await listFilesTool('p').execute!({ path: 'src' }, ctx)) as string;
+      expect(r).toContain('📁 components');
+      expect(r).toContain('📄 App.jsx');
+      expect(r).not.toContain('readme.md');
+    });
+
+    it('honors depth=2 to peek one level deeper', async () => {
+      mockListResponse([
+        'src/App.jsx',
+        'src/components/Header.tsx',
+        'src/components/Footer.tsx',
+      ]);
+      const r = (await listFilesTool('p').execute!({ path: 'src', depth: 2 }, ctx)) as string;
+      expect(r).toContain('📄 App.jsx');
+      expect(r).toContain('📁 components');
+      expect(r).toContain('Header.tsx');
+    });
   });
 
-  it('throws on 5xx response (lets agent retry)', async () => {
-    globalThis.fetch = (async () =>
-      new Response('boom', { status: 500, statusText: 'Server Error' })) as typeof fetch;
-    await expect(listFilesTool('p1').execute!({}, ctx)).rejects.toThrow('list_files failed: 500');
+  describe('filter (regex)', () => {
+    it('applies the filter regex to entry names', async () => {
+      mockListResponse(['App.jsx', 'index.html', 'README.md', 'styles.css']);
+      const r = (await listFilesTool('p').execute!({ filter: '\\.(jsx|css)$' }, ctx)) as string;
+      expect(r).toContain('App.jsx');
+      expect(r).toContain('styles.css');
+      expect(r).not.toContain('README.md');
+      expect(r).not.toContain('index.html');
+    });
   });
 
-  it('returns friendly { ok: false, error: "not_found" } on 404 (matches read_file)', async () => {
-    globalThis.fetch = (async () =>
-      new Response('not found', { status: 404, statusText: 'Not Found' })) as typeof fetch;
-    const r = await listFilesTool('p1').execute!({}, ctx);
-    expect(r).toEqual({ ok: false, error: 'not_found' });
+  describe('pagination', () => {
+    it('caps at 200 entries and reports truncated total', async () => {
+      const paths = Array.from({ length: 250 }, (_, i) => `f${String(i).padStart(3, '0')}.txt`);
+      mockListResponse(paths);
+      const r = (await listFilesTool('p').execute!({}, ctx)) as string;
+      expect(r).toMatch(/Showing 200 of 250 results/);
+      expect(r).toMatch(/offset=200/);
+    });
+
+    it('offset skips entries', async () => {
+      const paths = Array.from({ length: 10 }, (_, i) => `f${i}.txt`);
+      mockListResponse(paths);
+      const r = (await listFilesTool('p').execute!({ offset: 5 }, ctx)) as string;
+      expect(r).not.toContain('f4.txt');
+      expect(r).toContain('f5.txt');
+      expect(r).toContain('f9.txt');
+    });
   });
 
-  it("throws on 401/403 (auth errors aren't friendly)", async () => {
-    globalThis.fetch = (async () =>
-      new Response('unauthorized', { status: 401, statusText: 'Unauthorized' })) as typeof fetch;
-    await expect(listFilesTool('p1').execute!({}, ctx)).rejects.toThrow('list_files failed: 401');
+  describe('errors', () => {
+    it('returns error string on 404', async () => {
+      globalThis.fetch = (async () => new Response('', { status: 404 })) as typeof fetch;
+      const r = (await listFilesTool('p').execute!({}, ctx)) as string;
+      expect(typeof r).toBe('string');
+      expect(r).toMatch(/error/i);
+    });
   });
 
-  it('encodes projectId via encodeURIComponent', async () => {
-    let calledUrl = '';
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      calledUrl = String(input);
-      return new Response(JSON.stringify({ files: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-    await listFilesTool('proj with space').execute!({}, ctx);
-    expect(calledUrl).toBe('/api/projects/proj%20with%20space/files');
-  });
-
-  it('uses GET method', async () => {
-    let method = '';
-    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      method = init?.method ?? 'GET';
-      return new Response(JSON.stringify({ files: [] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-    await listFilesTool('p1').execute!({}, ctx);
-    expect(method).toBe('GET');
+  describe('cross-project path syntax', () => {
+    it('routes /projects/<otherId>/<dir> to the target project and scopes to <dir>', async () => {
+      let calledUrl = '';
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        calledUrl = String(input);
+        return new Response(
+          JSON.stringify({
+            files: [
+              { path: 'src/x.ts', size: 1, mimeType: 'text/plain', updatedAt: 'now' },
+              { path: 'src/y.ts', size: 1, mimeType: 'text/plain', updatedAt: 'now' },
+              { path: 'pkg/z.ts', size: 1, mimeType: 'text/plain', updatedAt: 'now' },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }) as typeof fetch;
+      const r = (await listFilesTool('current').execute!(
+        { path: '/projects/other-proj/src' },
+        ctx,
+      )) as string;
+      expect(calledUrl).toContain('/api/projects/other-proj/files');
+      expect(calledUrl).not.toContain('current');
+      // Result lists src/* but not pkg/* (path-scope filter applied).
+      expect(r).toContain('x.ts');
+      expect(r).toContain('y.ts');
+      expect(r).not.toContain('z.ts');
+    });
   });
 });

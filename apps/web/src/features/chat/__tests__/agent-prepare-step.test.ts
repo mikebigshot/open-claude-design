@@ -12,6 +12,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { makePrepareStep } from '../agent-prepare-step';
+import type { Todo } from '../todos-state';
 
 function userMsg(text: string): { role: 'user'; content: string } {
   return { role: 'user', content: text };
@@ -117,5 +118,84 @@ describe('makePrepareStep (§2.1 snip threshold + §4.2 system-reminder)', () =>
     expect(result!.messages!.length).toBe(1);
     const content = (result!.messages![0] as { content: string }).content;
     expect(content).toContain(REMINDER_PREFIX);
+  });
+});
+
+// Aligns with official `pq()` in
+// internal/docs/research/claude-design-v2/evidence/bundle.index-BFU6eZJE.js:
+// the agent loop injects a `<todo_reminder>` into the next user message
+// whenever the chat has outstanding (uncompleted) todos. This is independent
+// of token threshold — the reminder fires every step until the todos are
+// completed or removed.
+describe('makePrepareStep — <todo_reminder> injection (pq alignment)', () => {
+  const pending = (id: string, content: string): Todo => ({ id, content, status: 'pending' });
+  const completed = (id: string, content: string): Todo => ({
+    id,
+    content,
+    status: 'completed',
+  });
+
+  it('returns undefined when there are no todos AND under threshold', async () => {
+    const prepare = makePrepareStep({
+      getCurrentTodos: () => [],
+      threshold: 1_000_000,
+    });
+    const result = await prepare({
+      messages: [userMsg('hi')],
+      stepNumber: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when all todos are completed (no outstanding)', async () => {
+    const prepare = makePrepareStep({
+      getCurrentTodos: () => [completed('1', 'done it')],
+      threshold: 1_000_000,
+    });
+    const result = await prepare({
+      messages: [userMsg('hi')],
+      stepNumber: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    expect(result).toBeUndefined();
+  });
+
+  it('injects <todo_reminder> when outstanding todos exist, even under threshold', async () => {
+    const prepare = makePrepareStep({
+      getCurrentTodos: () => [pending('1', 'build page'), pending('2', 'add header')],
+      threshold: 1_000_000,
+    });
+    const result = await prepare({
+      messages: [userMsg('finish up')],
+      stepNumber: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    expect(result).toBeDefined();
+    const content = (result!.messages![0] as { content: string }).content;
+    expect(content).toContain('<todo_reminder>');
+    expect(content).toContain('You have 2 outstanding todo(s)');
+    expect(content).toContain('  1. build page');
+    expect(content).toContain('  2. add header');
+    expect(content).toContain('</todo_reminder>');
+    expect(content).toContain('finish up'); // original text preserved
+  });
+
+  it('combines <todo_reminder> with the token-pressure <system-reminder> when over threshold', async () => {
+    const prepare = makePrepareStep({
+      getRegisteredSnips: () => [],
+      getCurrentTodos: () => [pending('1', 'open todo')],
+      threshold: 1,
+    });
+    const result = await prepare({
+      messages: [userMsg('working [id:m0001]')],
+      stepNumber: 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    expect(result).toBeDefined();
+    const content = (result!.messages![0] as { content: string }).content;
+    expect(content).toContain('<system-reminder>');
+    expect(content).toContain('<todo_reminder>');
+    expect(content).toContain('open todo');
   });
 });
