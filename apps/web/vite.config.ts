@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -23,7 +23,10 @@ function worktreeNodeModules(...segments: string[]): string {
   return local; // fallback — let vite report the proper error
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // 同时读 .env / .env.local / .env.<mode> 以及 shell env，用于本地端口 override
+  const env = { ...process.env, ...loadEnv(mode, __dirname, '') };
+  return {
   plugins: [
     react({
       babel: {
@@ -68,10 +71,12 @@ export default defineConfig({
     dedupe: ['zod'],
   },
   server: {
-    port: 5173,
+    // 端口 / proxy target 可被 .env.local 或 shell env 覆盖（用于并行起多个 dev server）。
+    // 不设置任何 override 时行为不变：5173 + proxy 到 8787。
+    port: Number(env.VITE_DEV_PORT) || 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:8787',
         changeOrigin: true,
       },
     },
@@ -81,4 +86,5 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
   },
+  };
 });

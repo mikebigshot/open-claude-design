@@ -70,7 +70,8 @@ npm run format
 - `ALLOWED_ORIGINS` 默认是 `http://localhost:5173`；跨域部署时改 worker vars
 - Web 端可用 `VITE_API_BASE` 指向异源 worker；前端所有 `/api/*` 调用都通过 [`apps/web/src/lib/api.ts`](apps/web/src/lib/api.ts) 的 `buildUrl(path)` 拼前缀，新加调 worker 的代码必须沿用，否则跨域部署会断
 - `VITE_VENDOR_RUNTIME=true` 会让 iframe runtime 从同源 `/vendor` 读 React/Babel，需先 `npm run vendor --workspace=@open-design/web`
-- D1 schema 在 [`apps/api/drizzle/migrations/`](apps/api/drizzle/migrations/)，加新 migration 后**必须**同步更新 `apps/api/package.json` 里 `db:migrate:local` / `db:migrate:remote` 两条命令的文件列表
+- D1 schema 在 [`apps/api/drizzle/migrations/`](apps/api/drizzle/migrations/)（当前 `0001`–`0009`）；加新 migration 后**必须**同步更新 `apps/api/package.json` 里 `db:migrate:local` / `db:migrate:remote` 两条命令的文件列表
+- **并行多 worktree dev session**：API 的 `npm run dev` 会读当前 checkout 下 `apps/api/.dev-port`（如存在）作为 wrangler 端口，缺省 `8787`；web 同理可在 `apps/web/.dev-port` 里写端口，Vite 会把 `/api/*` proxy 到对应 worker。同时跑多 worktree 时给每个 checkout 写不同端口即可，不需要改 `package.json`
 
 ## 仓库架构
 
@@ -95,7 +96,7 @@ packages/
   design-tokens/    color / typography token（TS + CSS 双源）
   iframe-runtime/   注入预览 iframe 的 srcdoc、overlay、Tweaks bridge
 e2e/                Playwright 端到端套件 + OpenRouter mock/BYOK fixtures
-  specs/            main-flow / tools-overlay / files-and-source / persistence / error-paths / examples-flow / verifier-fork / deck-ppt-alignment
+  specs/            main-flow / tools-overlay / files-and-source / persistence / error-paths / examples-flow / verifier-fork / deck-ppt-alignment / iframe-error-placeholder
 ```
 
 ## 关键架构事实
@@ -117,13 +118,15 @@ BYOK 是多 provider 的：
 - 每个 provider 的 key 单独存在 localStorage：`open-design:llm-api-key:<provider>`
 - worker 永远不接触 LLM key、system prompt 或工具定义
 
-当前工具定义在 `apps/web/src/features/chat/tools/`，工具名是协议面，默认不要改：
+当前工具定义在 `apps/web/src/features/chat/tools/`（每个 `*.ts` 文件 ≈ 一个工具，工具名 = 文件名 hyphen→underscore；`index.ts` 是注册表，`__tests__/` 与 `tools.test.ts` 是 spec）。工具名是协议面，**默认不要改**——很多名字与 `claude.ai/design` bundle 对齐过（参考 commit 历史 `align ... with claude.ai/design bundle Bu8zJzmd`）。当前可用工具按角色分组：
 
-- 文件：`write_file`、`read_file`、`list_files`、`str_replace_based_edit_tool`、`delete_file`、`copy_files`、`grep`
-- 辅助：`view_image`、`web_fetch`、`invoke_skill`、`update_todos`、`done`
-- v2 通用：`snip`、`questions_v2`、`register_assets`
-- 导出 / 呈现：`open_for_print`、`present_fs_item_for_download`、`gen_pptx`、`super_inline_html`
-- verifier：`fork_verifier_agent`、`verification_feedback`；verifier-only 还有 `eval_js`、`screenshot`、`multi_screenshot`、`get_webview_logs`
+- 文件：`write_file`、`read_file`、`list_files`、`str_replace_based_edit_tool`、`delete_file`、`copy_files`、`grep`、`local_fs`
+- 辅助：`view_image`、`web_fetch`、`invoke_skill`、`update_todos`、`done`、`sleep`、`run_script`、`image_metadata`、`get_public_file_url`、`copy_starter_component`
+- v2 / v3 协议对齐：`snip`、`questions_v2`、`register_assets`、`unregister_assets`、`show_html`、`show_to_user`、`set_project_title`、`save_as_template`
+- 导出 / 呈现：`open_for_print`、`present_fs_item_for_download`、`gen_pptx`、`super_inline_html`、`save_screenshot`
+- verifier：`fork_verifier_agent`、`verification_feedback`；verifier-only 还有 `eval_js` / `eval_js_user_view`、`screenshot` / `screenshot_user_view` / `multi_screenshot`、`get_webview_logs`
+
+加新工具：建 `apps/web/src/features/chat/tools/<name>.ts` → 在 `index.ts` 注册 → 补 `__tests__/`。
 
 内置 skills（[`apps/web/src/skills/built-in/`](apps/web/src/skills/built-in/)）覆盖 frontend-design、interactive-prototype、make-tweakable、wireframe、slide-deck、save-as-pdf、save-as-standalone-html、export-as-pptx-editable、export-as-pptx-screenshots。SKILL.md 通过 Vite glob 注册，新加 skill 把目录扔进 `built-in/` 即可。
 
@@ -133,29 +136,22 @@ Verifier 子 agent 已实装：`fork_verifier_agent` 输出只作为信号；`us
 
 ### Worker / Storage
 
-`apps/api` 是存储型 REST API，不参与 chat path。路由挂载在 `apps/api/src/index.ts`：
+`apps/api` 是存储型 REST API，不参与 chat path。路由挂载在 `apps/api/src/index.ts`，子路由文件在 `apps/api/src/routes/`：
 
 - `GET /health`
-- `GET/POST /api/projects`
-- `GET/PATCH/DELETE /api/projects/:id`
-- `GET /api/projects/:id/files`
-- `GET/PUT/DELETE /api/projects/:id/files/:filePath`
-- `POST /api/projects/:projectId/files/copy`
-- `POST /api/projects/:projectId/grep`
-- `GET/POST /api/projects/:id/chats`
-- `PATCH/DELETE /api/projects/:id/chats/:chatId`
-- `GET /api/projects/:id/messages?chatId=...`
-- `PUT /api/projects/:id/messages`
-- `GET/POST /api/projects/:id/comments`
-- `DELETE /api/projects/:id/comments/:commentId`
-- `GET/POST /api/projects/:id/assets`（v2 资产 manifest，对应 `register_assets` 工具）
-- `GET /api/util/fetch?url=...`
-
-当前没有 mounted `/api/share/:token` 或 `/api/projects/:id/share-link` 路由；`shares` 表/类型是遗留或未来占位，文档和 UI 不要把 share 当成可用功能，除非先补 route + tests。
+- `GET/POST /api/projects`、`GET/PATCH/DELETE /api/projects/:id`
+- `GET /api/projects/:id/files`、`GET/PUT/DELETE /api/projects/:id/files/:filePath`
+- `POST /api/projects/:projectId/files/copy`、`POST /api/projects/:projectId/grep`
+- `GET/POST /api/projects/:id/chats`、`PATCH/DELETE /api/projects/:id/chats/:chatId`
+- `GET /api/projects/:id/messages?chatId=...`、`PUT /api/projects/:id/messages`
+- `GET/POST /api/projects/:id/comments`、`DELETE /api/projects/:id/comments/:commentId`
+- `GET/POST /api/projects/:id/assets`（v2 资产 manifest，对应 `register_assets` / `unregister_assets` 工具）
+- `share` 路由（`apps/api/src/routes/share.ts`）+ `templates` 路由（`apps/api/src/routes/templates.ts`）+ `GET /api/util/fetch?url=...`
+- 加新路由时**同时**在 `apps/api/src/index.ts` 用 `app.route(prefix, route)` 挂载、补 contracts、补 route test
 
 存储模型：
 
-- D1：`projects`、`blobs`、`files`、`chats`、`messages`、`comments`、`assets`，以及目前未挂路由的 `shares`
+- D1：`projects`、`blobs`、`files`、`chats`、`messages`、`comments`、`assets`、`shares`、`templates`（migrations `0001`–`0009`；`0008` 加 templates，`0009` 加 template intro_text）
 - R2：sha256 内容寻址 blob；`files` 表只保存 project/path 到 sha256 的当前指针
 - `messages.data` 存完整 Vercel AI SDK `UIMessage` JSON，worker 只抽 `id` / `role` / `position` 建索引
 - 文件 MIME 有 allowlist，改 `FileMimeType` 时同步 `ALLOWED_FILE_MIME_TYPES` 和 worker 推断逻辑
