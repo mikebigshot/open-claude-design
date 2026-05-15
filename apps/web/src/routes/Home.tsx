@@ -570,6 +570,18 @@ export function Home() {
         method: 'POST',
         body: body as unknown as BodyInit,
       });
+      // Slide-deck projects: seed the Composer with the "Make a deck"
+      // skill via sessionStorage (drained by ChatPanel on Workspace mount).
+      // This wires the Home TypePicker choice through to the agent loop
+      // without needing project.type to ride through the system prompt.
+      if (type === 'slide_deck') {
+        try {
+          sessionStorage.setItem(`open-design:seed-skill:${project.id}`, 'Make a deck');
+        } catch {
+          // private mode — silent skip; agent can still pick the skill up
+          // from the prompt's keyword trigger.
+        }
+      }
       // 乐观插入到列表 + NEW 徽章
       setProjects((prev) => [project, ...prev.filter((p) => p.id !== project.id)]);
       setJustCreatedId(project.id);

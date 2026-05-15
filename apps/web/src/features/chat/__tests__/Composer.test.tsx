@@ -280,6 +280,35 @@ describe('Composer skill attach', () => {
     expect(screen.queryByTestId('skill-chip-Make a deck')).toBeNull();
   });
 
+  // Slide-deck seed-skill flow — Home TypePicker selects "Slide deck" →
+  // ChatPanel reads sessionStorage seed → passes seedSkillName="Make a deck"
+  // → Composer resolves via registry + pre-pops a chip + fires
+  // onSeedSkillConsumed exactly once so caller can clear the seed.
+  it('seedSkillName resolves to a chip via the registry and notifies onSeedSkillConsumed', () => {
+    const onSeedSkillConsumed = vi.fn();
+    renderComposer({ value: '', seedSkillName: 'Make a deck', onSeedSkillConsumed });
+    expect(screen.getByTestId('skill-chip-Make a deck')).toBeInTheDocument();
+    expect(onSeedSkillConsumed).toHaveBeenCalledTimes(1);
+  });
+
+  it('seedSkillName="" / null is a no-op (no chip, no callback)', () => {
+    const onSeedSkillConsumed = vi.fn();
+    renderComposer({ value: '', seedSkillName: null, onSeedSkillConsumed });
+    expect(screen.queryByTestId(/^skill-chip-/)).toBeNull();
+    expect(onSeedSkillConsumed).not.toHaveBeenCalled();
+  });
+
+  it('seedSkillName for an unknown skill: still fires consumed (so caller drops the seed) but adds no chip', () => {
+    const onSeedSkillConsumed = vi.fn();
+    renderComposer({
+      value: '',
+      seedSkillName: 'Nonexistent Skill 7c1f',
+      onSeedSkillConsumed,
+    });
+    expect(screen.queryByTestId(/^skill-chip-/)).toBeNull();
+    expect(onSeedSkillConsumed).toHaveBeenCalledTimes(1);
+  });
+
   it('empty skill attachment list still allows sending (onSubmit fires with [] for both)', () => {
     const { onSubmit } = renderComposer({ value: 'hi' });
     act(() => fireEvent.click(screen.getByLabelText(/Send/i)));

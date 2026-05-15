@@ -306,6 +306,29 @@ export function ChatPanel({
     actions.clearComposerSeed();
   }, [workspaceState.composerSeed, actions]);
 
+  // Slide-deck seed-skill drain — Home writes
+  // `open-design:seed-skill:${projectId} = "Make a deck"` to sessionStorage
+  // when the user creates a project with type='slide_deck'. We read it once
+  // here and hand it down to Composer via `seedSkillName`; Composer resolves
+  // the skill via the registry and pre-pops a chip so the agent's first turn
+  // sees the deck skill inline.
+  const [seedSkillName, setSeedSkillName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!projectId) return;
+    const key = `open-design:seed-skill:${projectId}`;
+    let seeded: string | null = null;
+    try {
+      seeded = sessionStorage.getItem(key);
+      if (seeded !== null) sessionStorage.removeItem(key);
+    } catch {
+      // private mode → no seed available; skill loads via normal SkillPicker
+    }
+    if (seeded && seeded.trim().length > 0) {
+      setSeedSkillName(seeded);
+    }
+  }, [projectId]);
+  const handleSeedSkillConsumed = useCallback(() => setSeedSkillName(null), []);
+
   // Activity tab feed: derived from messages (tool calls) + pins (comments).
   // (`pins` is also bound below for the Comments tab; both branches read the
   // same workspace slice.)
@@ -534,6 +557,8 @@ export function ChatPanel({
           onStop={stop}
           streaming={isStreaming}
           onModelChange={handleModelChange}
+          seedSkillName={seedSkillName}
+          onSeedSkillConsumed={handleSeedSkillConsumed}
         />
       </Panel>
 

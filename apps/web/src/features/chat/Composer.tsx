@@ -7,11 +7,12 @@
 // Keyboard: cmd+Enter / ctrl+Enter sends. Plain Enter inserts a newline so
 // users can compose multi-paragraph prompts.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import type { ChatModel } from '@open-design/contracts';
 import { useT } from '@/i18n';
 import { buildUrl } from '@/lib/api';
+import { getSkillByName } from '@/skills/registry';
 import type { PendingAttachment } from '@/state/types';
 import { IconArrowUp, IconMic, IconPaperclip, IconPlus } from './icons';
 import { ImportPopover } from './ImportPopover';
@@ -75,6 +76,16 @@ export interface ComposerProps {
   model?: ChatModel;
   onChipsChange?: (chips: ChipPrim[]) => void;
   onModelChange?: (model: ChatModel) => void;
+  /**
+   * Name of a built-in skill to seed the chip row with on next non-empty
+   * render. Set by ChatPanel when the user created a "Slide deck" project
+   * on Home — the matching SKILLS[name] becomes a chip so the agent's
+   * first turn sees the deck skill prompt inline. Drained on receipt;
+   * caller is expected to set it back to null after.
+   */
+  seedSkillName?: string | null;
+  /** Called once Composer has consumed `seedSkillName` so the caller can clear it. */
+  onSeedSkillConsumed?: () => void;
 }
 
 const Wrap = styled.div`
@@ -289,6 +300,8 @@ export function Composer({
   model = loadStoredModel(),
   onChipsChange,
   onModelChange,
+  seedSkillName,
+  onSeedSkillConsumed,
 }: ComposerProps) {
   const t = useT();
   const [importOpen, setImportOpen] = useState(false);
@@ -307,6 +320,38 @@ export function Composer({
   // submenu. Renders as a "[skill: <name> ×]" chip above the textarea and
   // flows to onSubmit at send time. Clears alongside `attachments` on submit.
   const [skillAttachments, setSkillAttachments] = useState<Attachment[]>([]);
+
+  // Seed-skill drain — ChatPanel passes `seedSkillName` (e.g. "Make a deck"
+  // for slide_deck projects). On first non-null arrival we resolve the
+  // skill via the registry and add it to skillAttachments, then ping the
+  // caller via onSeedSkillConsumed so it can clear the seed (preventing
+  // re-drain on later renders / model switches).
+  //
+  // Dedupe via ref keyed by the seedSkillName string — depending on
+  // `skillAttachments` would re-fire the effect each time we mutate it.
+  const drainedSeedSkillRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!seedSkillName) return;
+    if (drainedSeedSkillRef.current === seedSkillName) return;
+    drainedSeedSkillRef.current = seedSkillName;
+    const skill = getSkillByName(seedSkillName);
+    if (!skill) {
+      onSeedSkillConsumed?.();
+      return;
+    }
+    const att: Attachment = {
+      id: `seed-skill-${skill.id}-${Date.now()}`,
+      type: 'skill',
+      name: skill.frontmatter.name,
+      content: skill.body,
+    };
+    setSkillAttachments((prev) =>
+      prev.some((a) => a.type === 'skill' && a.name === skill.frontmatter.name)
+        ? prev
+        : [...prev, att],
+    );
+    onSeedSkillConsumed?.();
+  }, [seedSkillName, onSeedSkillConsumed]);
 
   const removeChip = useCallback(
     (id: string) => {

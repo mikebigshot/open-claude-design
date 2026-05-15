@@ -1,5 +1,8 @@
 // 项目类型 4 tab —— Prototype / Slide deck / From template / Other
-// MVP 仅 prototype 可用，其他 disabled。
+// MVP: Prototype + Slide deck enabled. Picking "Slide deck" creates the
+// project with type='slide_deck' AND seeds the Composer with the
+// "Make a deck" skill so the agent enters deck mode without the user
+// needing to explicitly invoke it.
 
 import styled from 'styled-components';
 
@@ -16,7 +19,7 @@ interface TypeOption {
 
 const TYPES: TypeOption[] = [
   { labelKey: 'home.typePicker.prototype', value: 'prototype', enabled: true },
-  { labelKey: 'home.typePicker.slideDeck', value: 'slide_deck', enabled: false },
+  { labelKey: 'home.typePicker.slideDeck', value: 'slide_deck', enabled: true },
   { labelKey: 'home.typePicker.fromTemplate', value: 'other', enabled: false },
   { labelKey: 'home.typePicker.other', value: 'other', enabled: false },
 ];
