@@ -457,6 +457,16 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
         const apiKey = byokKey.get(provider);
         if (!apiKey) continue;
         setVerifier({ running: true, lastResult: null, error: null });
+        // Capture the chat id at SPAWN time so the verdict callback can tell
+        // whether the user has since switched chats. chatRef.current after
+        // the user clicks "New chat" points to a brand-new useChat instance
+        // (id changed → reinstanced) — calling .sendMessage on that one
+        // would leak this chat's verifier verdict into the unrelated new
+        // thread (observed bug: real-LLM deep run, S2's verdict landed in
+        // Chat 2). If the chat switched, drop the verdict to console + skip;
+        // a future enhancement should persist the verdict directly to D1
+        // for the spawning chatId.
+        const spawnedAtChatId = chatIdRef.current;
         void spawnVerifier({
           projectId: opts.projectId,
           apiKey,
@@ -471,14 +481,25 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
         }).then(
           (result) => {
             setVerifier({ running: false, lastResult: result, error: null });
+            if (chatIdRef.current !== spawnedAtChatId) {
+              console.warn(
+                `[verifier] verdict for chat ${spawnedAtChatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}). Verdict: ${result.verdict} — ${result.description.slice(0, 120)}`,
+              );
+              return;
+            }
             const c = chatRef.current;
             void c.sendMessage({ text: formatVerdictForMain(result) });
-            // Persist immediately so the verdict survives a refresh.
             persistThread(c.messages);
           },
           (err: unknown) => {
             const error = err instanceof Error ? err : new Error(String(err));
             setVerifier({ running: false, lastResult: null, error });
+            if (chatIdRef.current !== spawnedAtChatId) {
+              console.warn(
+                `[verifier] error for chat ${spawnedAtChatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}): ${error.message}`,
+              );
+              return;
+            }
             const c = chatRef.current;
             void c.sendMessage({
               text: `A background task has completed. Here are the results:\n\n⚠️ Verifier crashed: ${error.message}`,
