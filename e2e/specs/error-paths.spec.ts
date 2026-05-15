@@ -155,6 +155,12 @@ async function fillComposer(page: Page, text: string): Promise<Locator> {
 // ─────────────────────────────────────────────────────────────────────
 
 test.describe('error paths', () => {
+  // Serial: error-injection cases (5xx mocks, BYOK reset, very-long input)
+  // touch the BYOK + chat fixture path which expects a clean BYOK / model
+  // pref pre-state. Parallel runs from other specs mutating localStorage /
+  // dev-server state would flake these.
+  test.describe.configure({ mode: 'serial' });
+
   for (const c of automatedErrorCases()) {
     test(c.id, async ({ page, errorTracker }) => {
       const ack = ERROR_PATH_ACKNOWLEDGE[c.id];
@@ -223,11 +229,12 @@ async function runByokMissingShowsPrompt(page: Page): Promise<void> {
 
   await page.goto('/');
 
-  // (a) 首屏 BYOK 提示要明确：badge 写 "Set API key"
-  const setKeyBadge = page.getByRole('button', { name: /set api key/i });
-  await expect(setKeyBadge).toBeVisible({ timeout: 10_000 });
-  // 不能反过来显示已设的 ✓
-  await expect(page.getByRole('button', { name: /API key ✓/i })).toHaveCount(0);
+  // (a) 首屏 BYOK 提示要明确：home-api-key-button 子文显示 "set →"，未设。
+  // 旧的"Set API key" / "API key ✓"按钮在 multi-provider redesign 后换成
+  // `data-testid=home-api-key-button` 子文（set →）+ 红点。
+  const setKeyBtn = page.getByTestId('home-api-key-button');
+  await expect(setKeyBtn).toBeVisible({ timeout: 10_000 });
+  await expect(setKeyBtn).toContainText('set →');
 
   // (b) 在 home 没法直接 send chat（home 本来就没有 composer），
   // 我们走到 workspace 再点 Send，验证它弹 modal 而不是真发 OpenRouter。
@@ -239,8 +246,9 @@ async function runByokMissingShowsPrompt(page: Page): Promise<void> {
   await fillComposer(page, 'Build me a button');
   await page.getByRole('button', { name: /^send$/i }).click();
 
-  // 应弹 BYOK modal（"Set your OpenRouter API key"）而不是发 OpenRouter 请求
-  await expect(page.getByText(/Set your OpenRouter API key/i)).toBeVisible({ timeout: 5_000 });
+  // 应弹 BYOK modal（generic "Set your LLM API key" 在 multi-provider
+  // redesign 后取代了原本的 OpenRouter-specific 文案）而不是发 OpenRouter 请求
+  await expect(page.getByText(/Set your LLM API key/i)).toBeVisible({ timeout: 5_000 });
   // 没发任何 chat completions 请求
   expect(ofRequest.calls.length).toBe(0);
 }
@@ -265,11 +273,10 @@ async function runByokEmptyBlocksSend(page: Page): Promise<void> {
 
   await page.goto('/');
 
-  // (a) Badge state on Home — empty == missing.
-  await expect(page.getByRole('button', { name: /API key ✓/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /set api key/i })).toBeVisible({
-    timeout: 10_000,
-  });
+  // (a) Badge state on Home — empty == missing → home-api-key-button sub "set →".
+  const setKeyBtn = page.getByTestId('home-api-key-button');
+  await expect(setKeyBtn).toBeVisible({ timeout: 10_000 });
+  await expect(setKeyBtn).toContainText('set →');
 
   // (b) From workspace, clicking Send must pop the BYOK modal, not fire a
   // chat completion request.
@@ -279,7 +286,7 @@ async function runByokEmptyBlocksSend(page: Page): Promise<void> {
   await fillComposer(page, 'hello');
   await page.getByRole('button', { name: /^send$/i }).click();
 
-  await expect(page.getByText(/Set your OpenRouter API key/i)).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText(/Set your LLM API key/i)).toBeVisible({ timeout: 5_000 });
 
   // (c) Hard guarantee: not a single OpenRouter call escaped while the
   // user was being asked for a key. Wait a beat to let any stray fetch

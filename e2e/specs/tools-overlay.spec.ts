@@ -147,6 +147,13 @@ async function previewIframeBox(
 // ─────────────────────────────────────────────────────────────────────────
 
 test.describe('tools overlay (Tweaks / Comment / Edit / Draw)', () => {
+  // Serial: every case in this describe creates a fresh project + writes
+  // App.jsx through the agent loop + boots the preview iframe (overlay,
+  // React mount, srcdoc build, comment / draw / tweaks handlers). Running
+  // them concurrently against a single wrangler dev server saturates the
+  // file API + iframe initial-paint deadline (30s) trips. Cost of serial
+  // mode is ~5-10s per case (~1.5 min total) → acceptable.
+  test.describe.configure({ mode: 'serial' });
   for (const c of automatedToolsOverlayCases()) {
     test(c.id, async ({ page, errorTracker }) => {
       // catch console errors —— iframe-not-ready case 用得上
@@ -367,7 +374,12 @@ async function runCommentPinCreateAndPersist(page: Page): Promise<void> {
   const reframeElem = await page.locator('iframe[title="Preview"]').elementHandle();
   const reframe = await reframeElem!.contentFrame();
   await expect(reframe!.getByTestId('app-root')).toBeVisible({ timeout: 30_000 });
-  // pin 应回归（comments 从 D1 拉回）
+  // PreviewPanel 设计：非 Comment 模式时只显示当前选中的 pin（state.selectedPinId）；
+  // reload 后 selectedPinId 是 null → pin 被过滤掉。要 assert 持久化的 pin
+  // 仍存在，先切回 Comment 模式让所有 pin 显示。
+  await page.getByTestId('toolbar-comment').click();
+  await expect(page.getByTestId('toolbar-comment')).toHaveAttribute('data-active', 'true');
+  // pin 应回归（comments 从 D1 拉回 + Comment 模式渲染所有）
   await expect(page.getByTestId('comment-pin').first()).toBeVisible({ timeout: 10_000 });
 
   // 验后端 comments API 也能拿到

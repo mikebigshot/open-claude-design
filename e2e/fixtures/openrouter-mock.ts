@@ -125,6 +125,14 @@ export interface MockOpenRouterOptions {
    */
   turns?: MockTurn[];
   /**
+   * Optional second queue consumed instead of `turns` when the incoming
+   * request body contains the FORK_BOUNDARY_PROMPT marker (`=== FORK
+   * BOUNDARY ===`). This separates main-agent OpenRouter requests from
+   * verifier sub-agent OpenRouter requests so tests can script each
+   * independently. Used by verifier-fork.spec.ts.
+   */
+  verifierTurns?: MockTurn[];
+  /**
    * 简化模式：直接给出文件列表 + 是否 done。会自动展开为：
    *   turn1: 一句文本 + 一组 write_file tool calls
    *   turn2: 一句 "Done." + done() tool call
@@ -261,8 +269,10 @@ export async function mockOpenRouter(
   page: Page,
   options: MockOpenRouterOptions = {},
 ): Promise<void> {
-  const turns: MockTurn[] = options.turns ?? expandSimplified(options);
-  let callCount = 0;
+  const mainTurns: MockTurn[] = options.turns ?? expandSimplified(options);
+  const verifierTurns: MockTurn[] = options.verifierTurns ?? [];
+  let mainCount = 0;
+  let verifierCount = 0;
 
   await page.route('**/openrouter.ai/api/v1/chat/completions*', async (route: Route) => {
     // ───── error injection: status override ─────
@@ -280,11 +290,29 @@ export async function mockOpenRouter(
       return;
     }
 
-    const turn: MockTurn = turns[callCount] ?? {
-      text: 'No more mock turns — bailing out.',
-      finishReason: 'stop',
-    };
-    callCount += 1;
+    // Differentiate main vs verifier by request body marker. Verifier's
+    // triggering user message is FORK_BOUNDARY_PROMPT which starts with
+    // `=== FORK BOUNDARY ===` — that string only appears in verifier
+    // sub-chat requests.
+    const requestBody = route.request().postData() ?? '';
+    const isVerifierRequest = requestBody.includes('=== FORK BOUNDARY ===');
+
+    let turn: MockTurn;
+    if (isVerifierRequest && verifierTurns.length > 0) {
+      turn =
+        verifierTurns[verifierCount] ?? {
+          text: 'Verifier: no more mock turns — bailing out.',
+          finishReason: 'stop',
+        };
+      verifierCount += 1;
+    } else {
+      turn =
+        mainTurns[mainCount] ?? {
+          text: 'No more mock turns — bailing out.',
+          finishReason: 'stop',
+        };
+      mainCount += 1;
+    }
 
     // ───── slow / cut: stream chunks one by one through Playwright fulfill won't
     // work (route.fulfill 是一次性 buffer)。改用 page.context().request 拦不行;

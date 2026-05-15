@@ -165,6 +165,11 @@ async function sendChatPrompt(page: Page, prompt: string) {
 // ───── spec body ─────
 
 test.describe('persistence + multi-project', () => {
+  // Serial: persistence cases reload pages and assert prior D1 state. Under
+  // parallel load, another spec's project creation can write into the same
+  // D1 between reload + assert, flaking the round-trip. Serial avoids it.
+  test.describe.configure({ mode: 'serial' });
+
   for (const c of automatedPersistenceCases()) {
     test(c.id, async ({ page, errorTracker }) => {
       // 故意触发错误的两个 case：声明 expected
@@ -608,7 +613,7 @@ async function runErrorHomeProjects5xx(page: Page): Promise<void> {
 
   await page.goto('/');
   // 等 page 渲染完
-  await expect(page.getByText('Open Design', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Open Claude Design', { exact: true })).toBeVisible({ timeout: 15_000 });
 
   // ── (1) ErrorBanner 必须出现，文案明确 ──
   const errorBanner = page.getByRole('alert');

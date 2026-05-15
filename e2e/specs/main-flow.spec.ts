@@ -57,11 +57,14 @@ test.describe('main flow', () => {
 async function runHomeLoads(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/');
   // Home 顶部 brand 标题
-  await expect(page.getByText('Open Design', { exact: true })).toBeVisible();
+  await expect(page.getByText('Open Claude Design', { exact: true })).toBeVisible();
   // Rail 上 Create 按钮（disabled until 输入 name —— 但元素可见）
   await expect(page.getByRole('button', { name: /create/i }).first()).toBeVisible();
-  // BYOK 已注入 → badge 显示 'API key ✓'
-  await expect(page.getByRole('button', { name: /API key ✓/i })).toBeVisible();
+  // BYOK 已注入 → Home Rail 的 api-key 按钮显示 provider label (e.g. "OpenRouter").
+  // 旧的"API key ✓"badge 在 multi-provider 重设计里换成了 RailApiKeyButton
+  // ([data-testid=home-api-key-button])，按 BYOK 状态切换 sub text。
+  await expect(page.getByTestId('home-api-key-button')).toBeVisible();
+  await expect(page.getByTestId('home-api-key-button')).not.toContainText('set →');
 }
 
 async function runCreateProject(page: import('@playwright/test').Page): Promise<void> {
@@ -73,8 +76,12 @@ async function runCreateProject(page: import('@playwright/test').Page): Promise<
   const createBtn = page.getByRole('button', { name: /^create$/i });
   await createBtn.click();
   await expect(page).toHaveURL(/\/p\//, { timeout: 10_000 });
-  // workspace 渲染 —— Toolbar 上有 'PREVIEW' / 'FILE TREE' 之一
-  await expect(page.getByText(/^(PREVIEW|FILE TREE)/)).toBeVisible({ timeout: 15_000 });
+  // workspace 渲染 —— Workspace 顶部有 'Design Files' / 'Preview' tab
+  // （旧的 PREVIEW / FILE TREE 大写文案在 multi-tab redesign 里换掉了）。
+  // 用 .first() 避免 strict-mode 多匹配。
+  await expect(page.getByRole('tab', { name: /Design Files|Preview/i }).first()).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 async function runSendChatPrompt(page: import('@playwright/test').Page): Promise<void> {

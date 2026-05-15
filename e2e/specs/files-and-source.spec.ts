@@ -90,6 +90,11 @@ async function gotoDesignFilesStable(page: Page): Promise<void> {
 // ──────────── spec ────────────
 
 test.describe('files-and-source', () => {
+  // Serial: same reasoning as tools-overlay — these cases all boot an
+  // iframe preview and read multi-file state through the shared dev
+  // server. Parallel runs race the file API + 30s iframe-paint deadline.
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page }) => {
     await injectByok(page);
   });
