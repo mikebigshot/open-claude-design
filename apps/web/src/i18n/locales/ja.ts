@@ -259,6 +259,8 @@ export const ja: Dict = {
   'chat.tool.logs': 'ログ',
   'chat.tool.opening': '開く',
   'chat.tool.downloading': 'DL',
+  'chat.tool.exporting': '出力',
+  'chat.tool.bundling': '束ねる',
 
   'comments.errorLoad':
     'コメントを読み込めませんでした：{error}。ページを再読み込みしてもう一度お試しください。',

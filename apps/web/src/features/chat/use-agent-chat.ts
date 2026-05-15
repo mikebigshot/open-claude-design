@@ -16,6 +16,12 @@ import {
   findUnforkedDone,
   POST_DONE_NUDGE_TEXT,
 } from './loop-helpers/post-done-enforce.js';
+import {
+  isTimeoutLikeError,
+  makeTimeoutRetryHandler,
+  TIMEOUT_RETRY_INJECT_TEXT,
+} from './loop-helpers/timeout-retry.js';
+import { parseSchemaRejectionToolName } from './loop-helpers/mcp-schema-retry.js';
 import { inlineAttachmentsIntoText } from './attachment-inline.js';
 import { getRegisteredSnips } from './tools/snip.js';
 
@@ -192,11 +198,21 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
   //
   // onFinish receives the chat's full state.messages including the just-completed
   // assistant message (see ai/dist/index.mjs line 13286-13288).
+  // §2.4 timeout-retry handler — survives across the useChat instance via
+  // ref. Budget resets in onFinish so each successful turn refreshes it.
+  // §2.3 schema-rejection: detected here too but the wiring can only WARN —
+  // truly removing a tool from `makeTools()` would require recreating the
+  // agent. Surfacing the bad tool name to the user is the MVP affordance.
+  const timeoutRetryRef = useRef(makeTimeoutRetryHandler({ max: 2 }));
+
   const chat = useChat<DesignAgentUIMessage>({
     id: `chat-${opts.projectId}-${opts.chatId ?? 'pending'}-${keyTick}-${modelTick}`,
     transport,
     onFinish: ({ messages }) => {
+      // Healthy turn — reset retry budget so the next failure gets a fresh
+      // handler. Important: keep AFTER persistThread so partial state lands.
       persistThread(messages);
+      timeoutRetryRef.current.reset();
       // Drain pending queue. Use chatRef to call the latest sendMessage.
       const pending = pendingUserMessagesRef.current;
       if (pending.length > 0) {
@@ -206,6 +222,28 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
           // Fire async — onFinish doesn't return a Promise so we can't await.
           void chatRef.current.sendMessage({ text: wrapped });
         }
+      }
+    },
+    onError: (err) => {
+      // §2.4 timeout-retry: when the provider stream dies on a timeout
+      // (v2's "your past response was too long..."), inject the v2 verbatim
+      // user nudge and resend up to 2 times. After budget exhaustion the
+      // error propagates to UI as normal.
+      if (isTimeoutLikeError(err) && timeoutRetryRef.current.shouldRetry()) {
+        const c = chatRef.current;
+        void c.sendMessage({ text: TIMEOUT_RETRY_INJECT_TEXT });
+        return;
+      }
+      // §2.3 schema rejection — log + surface which tool was rejected so
+      // the user can pick a different MCP (or we can later wire dynamic
+      // tool registry to actually drop it for the next request).
+      const failingTool = parseSchemaRejectionToolName(err);
+      if (failingTool) {
+        console.warn(
+          `[chat] MCP tool "${failingTool}" was rejected by the provider for invalid schema. ` +
+            'The agent cannot use it; ask the user to disconnect the offending MCP server or ' +
+            'choose a different model.',
+        );
       }
     },
   });

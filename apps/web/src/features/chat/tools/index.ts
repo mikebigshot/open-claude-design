@@ -7,6 +7,7 @@ import { doneTool } from './done.js';
 import { evalJsTool } from './eval-js.js';
 import { evalJsUserViewTool } from './eval-js-user-view.js';
 import { forkVerifierTool } from './fork-verifier.js';
+import { genPptxTool } from './gen-pptx.js';
 import { getWebviewLogsTool } from './get-webview-logs.js';
 import { grepTool } from './grep.js';
 import { invokeSkillTool } from './invoke-skill.js';
@@ -21,6 +22,7 @@ import { screenshotTool } from './screenshot.js';
 import { screenshotUserViewTool } from './screenshot-user-view.js';
 import { snipTool } from './snip.js';
 import { strReplaceBasedEditTool } from './str-replace-based-edit-tool.js';
+import { superInlineHtmlTool } from './super-inline-html.js';
 import { updateTodosTool } from './update-todos.js';
 import { verificationFeedbackTool } from './verification-feedback.js';
 import { viewImageTool } from './view-image.js';
@@ -85,6 +87,13 @@ export function makeTools(ctx: MakeToolsContext) {
     // the exported artifact to the user.
     open_for_print: openForPrintTool(ctx.projectId),
     present_fs_item_for_download: presentFsItemForDownloadTool(ctx.projectId),
+    // Step F — editable PPTX export via pptxgenjs. 'screenshots' mode
+    // returns unsupported_mode until Step G ships.
+    gen_pptx: genPptxTool(ctx.projectId),
+    // Step H — inline an HTML file + all assets into a self-contained
+    // single-file bundle (offline-friendly). Consumed by Save as
+    // standalone HTML skill.
+    super_inline_html: superInlineHtmlTool(ctx.projectId),
   };
 
   if (mode === 'verifier') {

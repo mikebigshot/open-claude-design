@@ -256,6 +256,8 @@ export const zhCN: Dict = {
   'chat.tool.logs': '日志',
   'chat.tool.opening': '打开',
   'chat.tool.downloading': '下载',
+  'chat.tool.exporting': '导出',
+  'chat.tool.bundling': '打包',
 
   'comments.errorLoad': '无法加载评论：{error}。请刷新页面重试。',
   'comments.errorPartial': '无法重新加载所有评论：{error}。下方列表可能不完整。',

@@ -577,6 +577,20 @@ function toolDisplay(
         verbColor: c('fg300'),
         target: (input.label as string | undefined) ?? (input.path as string | undefined) ?? '',
       };
+    case 'tool-gen_pptx':
+      return {
+        verb: t('chat.tool.exporting'),
+        verbColor: c('fg300'),
+        target:
+          (input.outputFilename as string | undefined) ??
+          ((input.mode as string | undefined) === 'screenshots' ? 'PPTX (screenshots)' : 'PPTX'),
+      };
+    case 'tool-super_inline_html':
+      return {
+        verb: t('chat.tool.bundling'),
+        verbColor: c('fg300'),
+        target: (input.output_path as string | undefined) ?? (input.input_path as string | undefined) ?? '',
+      };
     default: {
       // Generic fallback — never truncate (F1.2 regression guard). For an
       // unknown tool "tool-some_new_thing" we render "some new thing" as

@@ -98,6 +98,22 @@ describe('built-in registry (loaded via Vite glob)', () => {
     expect(SKILLS['save-as-pdf']?.frontmatter.name).toBe('Save as PDF');
   });
 
+  it('export-as-pptx-editable loads (Step F — native PPTX serializer)', () => {
+    expect(SKILLS['export-as-pptx-editable']?.frontmatter.name).toBe('Export as PPTX (editable)');
+    const body = SKILLS['export-as-pptx-editable']?.body ?? '';
+    expect(body).toMatch(/SlideSpec/);
+    expect(body).toMatch(/gen_pptx/);
+  });
+
+  it('export-as-pptx-screenshots loads (Step G — image-only PPTX)', () => {
+    expect(SKILLS['export-as-pptx-screenshots']?.frontmatter.name).toBe(
+      'Export as PPTX (screenshots)',
+    );
+    const body = SKILLS['export-as-pptx-screenshots']?.body ?? '';
+    expect(body).toMatch(/screenshot/i);
+    expect(body).toMatch(/gen_pptx/);
+  });
+
   // ── listSkills hidden filter (master spec §4.4) ────────────────────────
   // None of our 4 OSS built-ins are hidden, so listSkills() must return
   // every entry in SKILLS by default. The includeHidden:true switch is

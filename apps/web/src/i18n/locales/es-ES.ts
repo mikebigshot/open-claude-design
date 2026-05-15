@@ -259,6 +259,8 @@ export const esES: Dict = {
   'chat.tool.logs': 'LOGS',
   'chat.tool.opening': 'ABRIR',
   'chat.tool.downloading': 'DESCARGA',
+  'chat.tool.exporting': 'EXPORTA',
+  'chat.tool.bundling': 'EMPAQUE',
 
   'comments.errorLoad':
     'No se pudieron cargar los comentarios: {error}. Recarga la página para reintentar.',

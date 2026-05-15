@@ -1,15 +1,17 @@
 // makeTools — agent v2 alignment. Mode-gated tool surface:
 //   - main mode (default): 14 baseline + snip + questions_v2 + register_assets
 //                          + open_for_print + present_fs_item_for_download
-//                          + eval_js_user_view + screenshot_user_view = 21 tools
+//                          + gen_pptx + super_inline_html
+//                          + eval_js_user_view + screenshot_user_view = 23 tools
 //   - verifier mode: 14 baseline + snip + questions_v2 + register_assets
 //                    + open_for_print + present_fs_item_for_download
-//                    + eval_js + screenshot + get_webview_logs
-//                    + multi_screenshot = 23 tools
+//                    + gen_pptx + super_inline_html + eval_js + screenshot
+//                    + get_webview_logs + multi_screenshot = 25 tools
 //
-// Verifier-only and main-only tools never overlap. `open_for_print` and
-// `present_fs_item_for_download` (research/claude-design-v2 §13) are
-// universal — both surfaces export artifacts to the user.
+// Verifier-only and main-only tools never overlap. `open_for_print`,
+// `present_fs_item_for_download`, `gen_pptx`, and `super_inline_html`
+// (research/claude-design-v2 §13) are universal — both surfaces export
+// artifacts to the user.
 
 import { describe, expect, it } from 'vitest';
 import { makeTools } from './index';
@@ -23,7 +25,7 @@ const baseCtx = {
 };
 
 describe('makeTools — agent v2 alignment surface', () => {
-  it('main mode (default) exposes the 21 expected tools', () => {
+  it('main mode (default) exposes the 23 expected tools', () => {
     const tools = makeTools(baseCtx);
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
@@ -31,6 +33,7 @@ describe('makeTools — agent v2 alignment surface', () => {
       'done',
       'eval_js_user_view',
       'fork_verifier_agent',
+      'gen_pptx',
       'grep',
       'invoke_skill',
       'list_files',
@@ -42,6 +45,7 @@ describe('makeTools — agent v2 alignment surface', () => {
       'screenshot_user_view',
       'snip',
       'str_replace_based_edit_tool',
+      'super_inline_html',
       'update_todos',
       'verification_feedback',
       'view_image',
@@ -50,7 +54,7 @@ describe('makeTools — agent v2 alignment surface', () => {
     ]);
   });
 
-  it('verifier mode exposes the 23 expected tools (verifier-only set, no user-view siblings)', () => {
+  it('verifier mode exposes the 25 expected tools (verifier-only set, no user-view siblings)', () => {
     const tools = makeTools({ ...baseCtx, mode: 'verifier' });
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
@@ -58,6 +62,7 @@ describe('makeTools — agent v2 alignment surface', () => {
       'done',
       'eval_js',
       'fork_verifier_agent',
+      'gen_pptx',
       'get_webview_logs',
       'grep',
       'invoke_skill',
@@ -71,6 +76,7 @@ describe('makeTools — agent v2 alignment surface', () => {
       'screenshot',
       'snip',
       'str_replace_based_edit_tool',
+      'super_inline_html',
       'update_todos',
       'verification_feedback',
       'view_image',

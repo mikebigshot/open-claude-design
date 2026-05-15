@@ -258,6 +258,8 @@ export const ru: Dict = {
   'chat.tool.logs': 'ЛОГИ',
   'chat.tool.opening': 'ОТКР',
   'chat.tool.downloading': 'СКАЧ',
+  'chat.tool.exporting': 'ЭКСП',
+  'chat.tool.bundling': 'СБОРКА',
 
   'comments.errorLoad':
     'Не удалось загрузить комментарии: {error}. Перезагрузите страницу, чтобы попробовать снова.',

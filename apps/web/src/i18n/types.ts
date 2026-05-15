@@ -315,6 +315,8 @@ export interface Dict {
   'chat.tool.logs': string;
   'chat.tool.opening': string;
   'chat.tool.downloading': string;
+  'chat.tool.exporting': string;
+  'chat.tool.bundling': string;
 
   // CommentsTab
   'comments.errorLoad': string;

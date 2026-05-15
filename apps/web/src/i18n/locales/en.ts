@@ -257,6 +257,8 @@ export const en: Dict = {
   'chat.tool.logs': 'LOGS',
   'chat.tool.opening': 'OPEN',
   'chat.tool.downloading': 'DOWN',
+  'chat.tool.exporting': 'EXPORT',
+  'chat.tool.bundling': 'BUNDLE',
 
   'comments.errorLoad': "Couldn't load comments: {error}. Reload the page to try again.",
   'comments.errorPartial':

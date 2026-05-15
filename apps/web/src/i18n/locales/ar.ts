@@ -257,6 +257,8 @@ export const ar: Dict = {
   'chat.tool.logs': 'سجلات',
   'chat.tool.opening': 'فتح',
   'chat.tool.downloading': 'تنزيل',
+  'chat.tool.exporting': 'تصدير',
+  'chat.tool.bundling': 'حزمة',
 
   'comments.errorLoad': 'تعذّر تحميل التعليقات: {error}. أعد تحميل الصفحة للمحاولة مرة أخرى.',
   'comments.errorPartial':

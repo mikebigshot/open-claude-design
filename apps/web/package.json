@@ -38,6 +38,7 @@
     "ai": "^6.0.172",
     "html-to-image": "^1.11.13",
     "jszip": "^3.10.1",
+    "pptxgenjs": "^4.0.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "^6.27.0",

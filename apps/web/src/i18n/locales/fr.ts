@@ -259,6 +259,8 @@ export const fr: Dict = {
   'chat.tool.logs': 'LOGS',
   'chat.tool.opening': 'OUVRIR',
   'chat.tool.downloading': 'TÉLÉCH',
+  'chat.tool.exporting': 'EXPORT',
+  'chat.tool.bundling': 'GROUPER',
 
   'comments.errorLoad':
     'Impossible de charger les commentaires : {error}. Rechargez la page pour réessayer.',
