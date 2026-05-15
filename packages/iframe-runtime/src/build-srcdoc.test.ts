@@ -17,6 +17,12 @@ import {
   sortFilesForExecution,
   stripModuleSyntax,
 } from './build-srcdoc';
+import {
+  buildInlineErrorHandlerScript,
+  INLINE_ERROR_PLACEHOLDER_ATTR,
+  INLINE_ERROR_SOURCE_GLOBAL,
+  INLINE_ERROR_RENDER_GLOBAL,
+} from './inline-error-handler';
 
 const oneFileBundle = [
   {
@@ -484,6 +490,135 @@ describe('buildSrcdoc — binary file filtering', () => {
     expect(html).toContain('// ===== App.jsx =====');
     expect(html).toContain('// ===== auto-entry =====');
     expect(html).toContain("ReactDOM.createRoot(document.getElementById('root')).render(<App/>);");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline error handler — in-iframe placeholder for Babel SyntaxError /
+// agent script throwing before React mounts.
+//
+// Bug repro: artifact with nested ASCII double-quotes inside a string literal
+// (e.g. `text: "  [PENDING]  把"能跑就行"..."`) makes Babel throw
+//   "Unexpected token, expected ',' (44:32)"
+// and the iframe renders nothing. Without the placeholder, the user sees an
+// empty cream-colored body and has zero indication anything went wrong.
+//
+// These tests verify the srcdoc carries:
+//   1. The error handler IIFE (registered before Babel processes inline scripts)
+//   2. The agent source text in a global so the placeholder can show the
+//      offending line + caret
+//   3. The marker attribute `data-codesign-iframe-error` so host code / tests
+//      can locate the rendered placeholder
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('buildSrcdoc — inline error handler injection', () => {
+  const BAD_JSX = [
+    'const messages = [',
+    '  { delay: 1000, text: "first" },',
+    '  { delay: 7300, text: "  [PENDING]  把"能跑就行"..." },',
+    '];',
+    'function App() { return <div>{messages[0].text}</div>; }',
+  ].join('\n');
+
+  it('injects the error handler IIFE by default', () => {
+    const html = buildSrcdoc([{ path: 'App.jsx', mimeType: 'text/jsx', content: BAD_JSX }]);
+    // Marker constant must appear so the placeholder can be located after error.
+    expect(html).toContain(INLINE_ERROR_PLACEHOLDER_ATTR);
+    // The IIFE registers the global render entry — that string is in the script.
+    expect(html).toContain(INLINE_ERROR_RENDER_GLOBAL);
+    // And listens for the standard error events.
+    expect(html).toContain("addEventListener('error'");
+    expect(html).toContain("addEventListener('unhandledrejection'");
+  });
+
+  it('captures the agent source text in a window global for line excerpts', () => {
+    const html = buildSrcdoc([{ path: 'App.jsx', mimeType: 'text/jsx', content: BAD_JSX }]);
+    // The global assignment is present.
+    expect(html).toContain('window.' + INLINE_ERROR_SOURCE_GLOBAL + '=');
+    // A signature line from the bad JSX is in the captured source (so the
+    // placeholder's line excerpt can render `text: "  [PENDING]  ..."` back).
+    // We assert on the unique marker phrase rather than the whole literal,
+    // which is also escaped for `</script>`.
+    expect(html).toContain('[PENDING]');
+  });
+
+  it('omits the inline error handler when injectInlineErrorHandler=false', () => {
+    const html = buildSrcdoc([{ path: 'App.jsx', mimeType: 'text/jsx', content: BAD_JSX }], {
+      injectInlineErrorHandler: false,
+    });
+    // No marker attribute in output (would otherwise appear inside the IIFE
+    // string literal `'data-codesign-iframe-error'`).
+    expect(html).not.toContain(INLINE_ERROR_PLACEHOLDER_ATTR);
+    expect(html).not.toContain(INLINE_ERROR_RENDER_GLOBAL);
+    expect(html).not.toContain('window.' + INLINE_ERROR_SOURCE_GLOBAL);
+  });
+
+  it('places the handler script before the Babel CDN tag (must register before babel runs)', () => {
+    const html = buildSrcdoc([{ path: 'App.jsx', mimeType: 'text/jsx', content: BAD_JSX }]);
+    const handlerIdx = html.indexOf(INLINE_ERROR_RENDER_GLOBAL);
+    const babelIdx = html.indexOf('@babel/standalone@');
+    expect(handlerIdx).toBeGreaterThan(0);
+    expect(babelIdx).toBeGreaterThan(0);
+    expect(handlerIdx).toBeLessThan(babelIdx);
+  });
+
+  it('escapes close-script tags inside the captured source text', () => {
+    const html = buildSrcdoc([
+      {
+        path: 'evil.jsx',
+        mimeType: 'text/jsx',
+        // Agent source containing a literal `</script>` — must not break the
+        // outer <script> wrapper around the source-capture block.
+        content: 'const html = "</script>oops";',
+      },
+    ]);
+    // Source must be present but escaped — the surrounding <script>window.X=...
+    // block must not have a literal `</script>` inside its value.
+    const sourceTagMatch = html.match(
+      new RegExp(
+        '<script>window\\.' + INLINE_ERROR_SOURCE_GLOBAL + '=([\\s\\S]*?);</script>',
+      ),
+    );
+    expect(sourceTagMatch).not.toBeNull();
+    const sourceValue = sourceTagMatch![1]!;
+    // Critical safety: no literal `</script>` allowed inside the source
+    // capture — that would prematurely close the wrapping <script> tag.
+    expect(sourceValue).not.toContain('</script>');
+    // The escape chain is escapeForScript (→ `<\/script>`) then JSON.stringify
+    // (→ each `\` becomes `\\`), so the JSON value embeds `<\\/script>` (two
+    // backslashes). At JS runtime that decodes to `<\/script>` (one backslash),
+    // which the HTML parser still does not see as a close-tag because the `\`
+    // sits between `<` and `/`.
+    expect(sourceValue).toContain('<\\\\/script>');
+  });
+});
+
+describe('buildInlineErrorHandlerScript — IIFE structure', () => {
+  it('returns a self-invoking function expression', () => {
+    const src = buildInlineErrorHandlerScript();
+    expect(src.startsWith('(function')).toBe(true);
+    expect(src.trimEnd().endsWith('})();')).toBe(true);
+  });
+
+  it("references both 'error' and 'unhandledrejection' listeners", () => {
+    const src = buildInlineErrorHandlerScript();
+    expect(src).toContain("addEventListener('error'");
+    expect(src).toContain("addEventListener('unhandledrejection'");
+  });
+
+  it('embeds the placeholder marker attribute string', () => {
+    const src = buildInlineErrorHandlerScript();
+    expect(src).toContain(INLINE_ERROR_PLACEHOLDER_ATTR);
+  });
+
+  it('extracts (line:col) from Babel-style error messages', () => {
+    // Source-level regex used by the IIFE — duplicate the pattern here as a
+    // smoke check that the (\d+:\d+) capture is present and not accidentally
+    // mangled into the wrong shape during build/edit. Test string `\\(`
+    // becomes runtime `\(`; IIFE source has `\((\d+):(\d+)\)` (escaped parens
+    // in the regex literal).
+    const src = buildInlineErrorHandlerScript();
+    expect(src).toContain('\\((\\d+):(\\d+)\\)');
   });
 });
 

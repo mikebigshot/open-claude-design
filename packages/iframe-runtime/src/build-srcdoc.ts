@@ -7,6 +7,10 @@
 
 import { buildOverlayScript } from './overlay';
 import { buildTweaksBridgeSetup, buildTweaksBridgeListener } from './tweaks-bridge';
+import {
+  buildInlineErrorHandlerScript,
+  INLINE_ERROR_SOURCE_GLOBAL,
+} from './inline-error-handler';
 
 // ---------------------------------------------------------------------------
 // 类型 + 默认配置
@@ -55,6 +59,17 @@ export interface BuildSrcdocOptions {
   readonly injectOverlay?: boolean;
   /** 是否注入 Tweaks bridge（cached root + listener）。默认 `true`。 */
   readonly injectTweaks?: boolean;
+  /**
+   * 是否注入 inline error handler（编译/运行时错误 → in-iframe placeholder）。
+   *
+   * 默认 `true`。当 inline `<script type="text/babel">` 抛出 SyntaxError 或 agent
+   * 脚本同步 throw 时，handler 会渲染一个 `data-codesign-iframe-error` placeholder
+   * 到 body 里（前提是 `#root` 仍为空 —— 运行时错误后不会覆盖已渲染的 React tree）。
+   *
+   * 这个 handler 跟 `overlay.ts` 的 IFRAME_ERROR postMessage 是互补关系：postMessage
+   * 让 host 知道出事了，placeholder 让 user **在 iframe 内**就能看到出了什么事。
+   */
+  readonly injectInlineErrorHandler?: boolean;
 }
 
 // 锁死的版本号 + 路径。改这些就破坏复刻精度。
@@ -322,6 +337,7 @@ export function buildSrcdoc(
   const babelCdn = options.babelCdn ?? DEFAULT_CDN;
   const injectOverlay = options.injectOverlay ?? true;
   const injectTweaks = options.injectTweaks ?? true;
+  const injectInlineErrorHandler = options.injectInlineErrorHandler ?? true;
 
   // Drop binary files (image / audio / video / octet-stream / known binary
   // extensions) BEFORE any other processing — they must not reach the babel
@@ -380,6 +396,36 @@ export function buildSrcdoc(
     'html,body,#root{height:100%;}',
     'body{font-family:system-ui,sans-serif;background:#faf7f2;}',
     '</style>',
+  ];
+
+  // Inline error handler MUST run before Babel processes inline scripts.
+  // Source text is stashed in a global so the placeholder can show the
+  // offending line + caret. We escape both the JSON literal (close-script
+  // hazard via raw user content) and the IIFE source.
+  //
+  // Leading `\n` alignment: when Babel parses our `<script type="text/babel">`
+  // block, the script body it sees begins with the newline immediately after
+  // the opening tag (see how the AGENT_BODY block is assembled below — lines
+  // are joined with `\n`, so there's a `\n` between `<script>` and the first
+  // agent line). Babel reports `(line:col)` against that view, treating the
+  // newline as line 1. The captured source must mirror this — prepend a `\n`
+  // so `lines[lineno - 1]` in the placeholder code resolves to the offending
+  // agent line under Babel's numbering, not one line below.
+  const inlineErrorSourceLiteral = injectInlineErrorHandler
+    ? escapeForScript(JSON.stringify('\n' + fullAgentScript))
+    : null;
+  if (injectInlineErrorHandler && inlineErrorSourceLiteral !== null) {
+    lines.push(
+      '<script>window.' +
+        INLINE_ERROR_SOURCE_GLOBAL +
+        '=' +
+        inlineErrorSourceLiteral +
+        ';</script>',
+      '<script>' + escapeForScript(buildInlineErrorHandlerScript()) + '</script>',
+    );
+  }
+
+  lines.push(
     // Tailwind play CDN — agents reflexively write `className="bg-blue-500
     // px-4 py-2"`. Without this script, those classes land in the DOM but
     // produce no styling and the artifact looks broken (regression caught
@@ -399,7 +445,7 @@ export function buildSrcdoc(
     reactScriptTag,
     reactDomScriptTag,
     babelScriptTag,
-  ];
+  );
 
   if (injectTweaks) {
     lines.push('<script>' + escapeForScript(buildTweaksBridgeSetup()) + '</script>');

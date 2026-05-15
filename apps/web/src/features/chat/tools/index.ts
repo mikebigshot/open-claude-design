@@ -70,11 +70,14 @@ export function makeTools(ctx: MakeToolsContext) {
     invoke_skill: invokeSkillTool({ skills: ctx.skills }),
     web_fetch: webFetchTool(),
     done: doneTool(),
-    // Verifier sub-agent (P2-7). Both tools are present in main + verifier
-    // tool sets — the FORK_BOUNDARY_PROMPT educates the verifier not to call
+    // Verifier sub-agent. Both tools are present in main + verifier tool
+    // sets — the FORK_BOUNDARY_PROMPT educates the verifier not to call
     // fork_verifier_agent recursively, and forbids the main agent from
-    // calling verification_feedback (the latter is verifier-only).
-    fork_verifier_agent: forkVerifierTool(),
+    // calling verification_feedback (the latter is verifier-only). The
+    // fork tool's execute() reads the active chat id at fire time via
+    // `getChatId` so the same agent instance can serve multiple chats
+    // without re-creating tools per chat switch.
+    fork_verifier_agent: forkVerifierTool({ getChatId: () => getChatId() }),
     verification_feedback: verificationFeedbackTool(),
     // Agent v2 universal additions.
     snip: snipTool({ getChatId }),

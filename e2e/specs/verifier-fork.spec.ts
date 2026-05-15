@@ -33,7 +33,7 @@ test.describe('verifier-fork — main → fork → verifier → verdict', () => 
           {
             name: 'fork_verifier_agent',
             args: {
-              instructions: 'Please verify the deck renders without console errors.',
+              task: 'Please verify the deck renders without console errors.',
             },
           },
         ],

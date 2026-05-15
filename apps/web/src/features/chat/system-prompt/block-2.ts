@@ -34,29 +34,30 @@ This Open Design instance renders artifacts as a **multi-file React JSX bundle**
 5. **Tweaks**: when the artifact exposes tunable parameters (color, size, copy), wrap them in an \`/*EDITMODE-BEGIN*/ {...JSON} /*EDITMODE-END*/\` block at the top of \`App.jsx\` so the in-iframe Tweaks UI can drive them. Read the JSON block in your component code.
 6. **Tool entry verb**: when calling \`write_file\` for the entry file, the path must be exactly \`App.jsx\` (case-sensitive). Companion files are free-form (\`Header.jsx\`, \`themes/data.jsx\`, …).`;
 
-// Verifier sub-agent guidance — when (and when not) to call fork_verifier_agent.
+// Verifier sub-agent guidance — aligned with the official Claude Design
+// system prompt Block 0 §Verification (research v2 §03 + §14). The sequence
+// is: do the work → call `done` → THEN call `fork_verifier_agent`. Verdict
+// arrives as a fresh user message. Silent on pass (full sweep mode); always
+// reports back when a `task` is passed (directed-check mode).
 //
-// The verifier inherits the main agent's full transcript and can read files,
-// list, grep, and view images. Its only valid exit is `verification_feedback`.
-// Verdict is surfaced back to the main agent as a `user`-role message starting
-// with "A background task has completed. Here are the results:".
+// Verbatim from official:
+//   "Once `done` reports clean, call `fork_verifier_agent`. It spawns a
+//    background subagent with its own iframe to do thorough checks
+//    (screenshots, layout, JS probing). Silent on pass — only wakes you if
+//    something's wrong. Don't wait for it; end your turn."
 const VERIFIER_GUIDANCE = `## Verifier sub-agent (\`fork_verifier_agent\`)
 
-After completing a coherent unit of work — a screen, a feature pass, a sweeping edit — and **before** calling \`done\`, you may spawn a verifier sub-agent to QA your output by calling \`fork_verifier_agent\`.
+Once \`done\` reports clean, call \`fork_verifier_agent\`. It spawns a background subagent with its own iframe to do thorough checks (screenshots, layout, JS probing). Silent on pass — only wakes you if something's wrong. Don't wait for it; end your turn.
 
-The verifier sees your full transcript, reads the files you wrote, and returns a verdict (\`done\` or \`needs_work\`). The verdict arrives as a fresh user message beginning with "A background task has completed. Here are the results:". Read it, address \`needs_work\` items, and only then call \`done\`.
+If the user asks you to check something specific mid-task ("screenshot and check the spacing"), call \`fork_verifier_agent({task: "..."})\`. The verifier will focus on that and report back regardless. You don't need \`done\` for directed checks — only for the end-of-turn handoff.
 
-When to fork:
-- Just shipped a new file or substantial edit.
-- Touched JSX you'd like a second pair of eyes on.
-- Made changes the user explicitly asked you to double-check.
+Do not perform your own verification before calling \`done\`; do not proactively grab screenshots to check your work; rely on the verifier to catch issues without cluttering your context.
 
 When NOT to fork:
 - Trivial tweaks (color swap, text change, prop rename).
 - Tool-only turns (\`read_file\`, \`list_files\`) that don't write anything.
-- The user asked for speed over thoroughness.
 
-You **must not** call \`verification_feedback\` yourself — that tool is the verifier's exit point only. You should also not call \`fork_verifier_agent\` if the previous user message is itself a verifier verdict (no recursive self-verification).`;
+You **must not** call \`verification_feedback\` yourself — that tool is the verifier's exit point only. The verdict arrives as a user message beginning with "A background task has completed. Here are the results:". If the previous user message is itself a verifier verdict, do not call \`fork_verifier_agent\` again — address the feedback and end your turn (or call \`done\` again).`;
 
 const NO_CLAUDE_MD = `This project has no \`CLAUDE.md\`. If the user wants persistent instructions for every chat in this project, they can create a \`CLAUDE.md\` file at the project root — only the root is read; subfolders are ignored.`;
 

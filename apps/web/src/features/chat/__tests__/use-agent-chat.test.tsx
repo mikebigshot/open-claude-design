@@ -107,6 +107,7 @@ vi.mock('../verifier', async () => {
 import { api } from '@/lib/api';
 import { useAgentChat } from '../use-agent-chat';
 import { createAgent } from '../agent';
+import { _resetMainLoopRegistry, getMainLoopSnapshot } from '../main-loop-registry';
 
 const apiMock = api as unknown as ReturnType<typeof vi.fn>;
 const createAgentMock = createAgent as unknown as ReturnType<typeof vi.fn>;
@@ -456,9 +457,38 @@ describe('useAgentChat', () => {
     errSpy.mockRestore();
   });
 
-  describe('verifier orchestration', () => {
-    it('does not spawn verifier when BYOK key is missing', () => {
-      // No byokKey set in beforeEach reset
+  // Verifier orchestration — aligned with official Claude Design (research v2
+  // §10.5 + §14). The hook does NOT watch messages to decide when to spawn;
+  // it only registers a main-loop snapshot in `main-loop-registry` while
+  // the chat is mid-turn (streaming / submitted). The actual fork happens
+  // inside `fork_verifier_agent.execute()` (tested in
+  // `tools/__tests__/fork-verifier.test.ts`), reading the snapshot back via
+  // the registry. These tests verify the *registration wiring*.
+  describe('verifier orchestration (main-loop registration)', () => {
+    beforeEach(() => {
+      _resetMainLoopRegistry();
+    });
+
+    it('does not register a main loop while chat.status is ready', async () => {
+      byokKey.set('openrouter', 'sk-or-test');
+      fakeChat.status = 'ready';
+      renderHook(() => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }), {
+        wrapper,
+      });
+      // Give effects a tick to run.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getMainLoopSnapshot('c1')).toBeNull();
+    });
+
+    it('does NOT spawn verifier on mount when persisted history has fork_verifier_agent (the bug fix)', async () => {
+      // This is the regression test for the reload-auto-fire-LLM bug.
+      // Pre-fix: an effect watched chat.messages and re-spawned verifier on
+      // every mount because the in-memory dedup Set was empty after reload.
+      // Post-fix: there is no such effect; the only spawn path is the tool's
+      // execute() running inside an active main loop turn. Mount with
+      // status=ready means no main loop registered → fork tool would reject.
+      byokKey.set('openrouter', 'sk-or-test');
+      fakeChat.status = 'ready';
       fakeChat.messages = [
         {
           id: 'a1',
@@ -476,161 +506,134 @@ describe('useAgentChat', () => {
       renderHook(() => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }), {
         wrapper,
       });
+      await new Promise((r) => setTimeout(r, 0));
       expect(spawnVerifierMock).not.toHaveBeenCalled();
+      expect(getMainLoopSnapshot('c1')).toBeNull();
     });
 
-    it('spawns verifier when fork_verifier_agent goes to output-available', async () => {
+    it('registers a main loop snapshot when chat.status is streaming', async () => {
       byokKey.set('openrouter', 'sk-or-test');
-      spawnVerifierMock.mockReturnValue(new Promise(() => {})); // never resolves
-      fakeChat.messages = [
-        {
-          id: 'a1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'tool-fork_verifier_agent',
-              state: 'output-available',
-              input: { instructions: 'check the dropdown' },
-              toolCallId: 'fork-1',
-            } as never,
-          ],
-        },
-      ];
+      fakeChat.status = 'streaming';
+      renderHook(
+        () =>
+          useAgentChat({
+            projectId: 'p1',
+            chatId: 'c1',
+            fidelity: 'high',
+            designSystemId: 'ds1',
+            designSystemName: 'My DS',
+          }),
+        { wrapper },
+      );
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      const snap = getMainLoopSnapshot('c1')!;
+      expect(snap.projectId).toBe('p1');
+      expect(snap.apiKey).toBe('sk-or-test');
+      expect(snap.provider).toBe('openrouter');
+      expect(snap.fidelity).toBe('high');
+      expect(snap.designSystemId).toBe('ds1');
+      expect(snap.designSystemName).toBe('My DS');
+      expect(snap.mainSessionId).toBe(fakeChat.id);
+    });
+
+    it('snapshot.messages getter returns the freshest chat.messages array', async () => {
+      byokKey.set('openrouter', 'sk-or-test');
+      fakeChat.status = 'streaming';
+      fakeChat.messages = [{ id: 'u0', role: 'user', parts: [] }];
       renderHook(() => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }), {
         wrapper,
       });
-      await waitFor(() => expect(spawnVerifierMock).toHaveBeenCalledTimes(1));
-      expect(spawnVerifierMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: 'p1',
-          apiKey: 'sk-or-test',
-          mainSessionId: 'chat-p1-c1-0-0',
-          instructions: 'check the dropdown',
-        }),
-      );
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      expect(getMainLoopSnapshot('c1')!.messages).toHaveLength(1);
+
+      // Mutate fakeChat.messages then read snapshot again — getter must
+      // re-read, not return a frozen-at-registration copy.
+      fakeChat.messages = [
+        { id: 'u0', role: 'user', parts: [] },
+        { id: 'a0', role: 'assistant', parts: [] },
+      ];
+      expect(getMainLoopSnapshot('c1')!.messages).toHaveLength(2);
     });
 
-    it('does not re-spawn verifier on subsequent renders for the same toolCallId', async () => {
+    it('unregisters when chat.status returns to ready', async () => {
       byokKey.set('openrouter', 'sk-or-test');
-      spawnVerifierMock.mockReturnValue(new Promise(() => {}));
-      fakeChat.messages = [
-        {
-          id: 'a1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'tool-fork_verifier_agent',
-              state: 'output-available',
-              input: {},
-              toolCallId: 'fork-1',
-            } as never,
-          ],
-        },
-      ];
+      fakeChat.status = 'streaming';
       const { rerender } = renderHook(
         () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
-        {
-          wrapper,
-        },
+        { wrapper },
       );
-      await waitFor(() => expect(spawnVerifierMock).toHaveBeenCalledTimes(1));
-      rerender();
-      rerender();
-      expect(spawnVerifierMock).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      await act(async () => {
+        fakeChat.status = 'ready';
+        rerender();
+      });
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).toBeNull());
     });
 
-    it('feeds verdict back into main thread via sendMessage on resolve', async () => {
+    it('snapshot.onSpawnStart flips verifier.running to true', async () => {
       byokKey.set('openrouter', 'sk-or-test');
-      spawnVerifierMock.mockResolvedValue({
-        verdict: 'done',
-        description: 'looks good',
-        messages: [],
-        timedOut: false,
-      });
-      fakeChat.messages = [
-        {
-          id: 'a1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'tool-fork_verifier_agent',
-              state: 'output-available',
-              input: {},
-              toolCallId: 'fork-1',
-            } as never,
-          ],
-        },
-      ];
-      renderHook(() => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }), {
-        wrapper,
-      });
-
-      await waitFor(() => {
-        const sentTexts = fakeChat.sendMessage.mock.calls.map(
-          (c) => (c[0] as { text?: string }).text ?? '',
-        );
-        expect(sentTexts.some((t) => t.includes('Verifier verdict'))).toBe(true);
-      });
-      const lastCall = fakeChat.sendMessage.mock.calls.find((c) =>
-        (c[0] as { text?: string }).text?.includes('Verifier verdict'),
-      );
-      expect((lastCall![0] as { text: string }).text).toMatch(/done/);
-      expect((lastCall![0] as { text: string }).text).toMatch(/looks good/);
-    });
-
-    it('feeds an error message back when spawnVerifier rejects', async () => {
-      byokKey.set('openrouter', 'sk-or-test');
-      spawnVerifierMock.mockRejectedValue(new Error('verifier crashed'));
-      fakeChat.messages = [
-        {
-          id: 'a1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'tool-fork_verifier_agent',
-              state: 'output-available',
-              input: {},
-              toolCallId: 'fork-1',
-            } as never,
-          ],
-        },
-      ];
-      renderHook(() => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }), {
-        wrapper,
-      });
-
-      await waitFor(() => {
-        const sentTexts = fakeChat.sendMessage.mock.calls.map(
-          (c) => (c[0] as { text?: string }).text ?? '',
-        );
-        expect(sentTexts.some((t) => t.includes('Verifier crashed'))).toBe(true);
-      });
-    });
-
-    it('exposes verifier.running=true while spawnVerifier is pending', async () => {
-      byokKey.set('openrouter', 'sk-or-test');
-      spawnVerifierMock.mockReturnValue(new Promise(() => {}));
-      fakeChat.messages = [
-        {
-          id: 'a1',
-          role: 'assistant',
-          parts: [
-            {
-              type: 'tool-fork_verifier_agent',
-              state: 'output-available',
-              input: {},
-              toolCallId: 'fork-1',
-            } as never,
-          ],
-        },
-      ];
+      fakeChat.status = 'streaming';
       const { result } = renderHook(
         () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
-        {
-          wrapper,
-        },
+        { wrapper },
       );
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      const snap = getMainLoopSnapshot('c1')!;
+      act(() => {
+        snap.onSpawnStart();
+      });
       await waitFor(() => expect(result.current.verifier.running).toBe(true));
+    });
+
+    it('snapshot.onVerdict flips verifier state and sends formatted verdict back via chat.sendMessage', async () => {
+      byokKey.set('openrouter', 'sk-or-test');
+      fakeChat.status = 'streaming';
+      const { result } = renderHook(
+        () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
+        { wrapper },
+      );
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      const snap = getMainLoopSnapshot('c1')!;
+      act(() => {
+        snap.onSpawnStart();
+        snap.onVerdict({
+          verdict: 'done',
+          description: 'looks good',
+          messages: [],
+          timedOut: false,
+        });
+      });
+      await waitFor(() => {
+        expect(result.current.verifier.running).toBe(false);
+        expect(result.current.verifier.lastResult?.verdict).toBe('done');
+      });
+      const verdictCall = fakeChat.sendMessage.mock.calls.find((c) =>
+        (c[0] as { text?: string }).text?.includes('Verifier verdict'),
+      );
+      expect(verdictCall).toBeTruthy();
+      expect((verdictCall![0] as { text: string }).text).toMatch(/done/);
+      expect((verdictCall![0] as { text: string }).text).toMatch(/looks good/);
+    });
+
+    it('snapshot.onError flips verifier state and sends a crash message back via chat.sendMessage', async () => {
+      byokKey.set('openrouter', 'sk-or-test');
+      fakeChat.status = 'streaming';
+      const { result } = renderHook(
+        () => useAgentChat({ projectId: 'p1', chatId: 'c1', fidelity: 'high' }),
+        { wrapper },
+      );
+      await waitFor(() => expect(getMainLoopSnapshot('c1')).not.toBeNull());
+      const snap = getMainLoopSnapshot('c1')!;
+      act(() => {
+        snap.onSpawnStart();
+        snap.onError(new Error('verifier crashed'));
+      });
+      await waitFor(() => expect(result.current.verifier.error?.message).toBe('verifier crashed'));
+      const crashCall = fakeChat.sendMessage.mock.calls.find((c) =>
+        (c[0] as { text?: string }).text?.includes('Verifier crashed'),
+      );
+      expect(crashCall).toBeTruthy();
+      expect((crashCall![0] as { text: string }).text).toContain('verifier crashed');
     });
   });
 });

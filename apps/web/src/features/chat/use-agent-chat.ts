@@ -9,13 +9,14 @@ import { subscribeModelChange } from '../../lib/model-pref-events.js';
 import { createAgent } from './agent.js';
 import { useTodos } from './todos-state.js';
 import type { DesignAgentUIMessage, Attachment } from './ui-messages.js';
-import { spawnVerifier, formatVerdictForMain, type VerifierResult } from './verifier.js';
+import { formatVerdictForMain, type VerifierResult } from './verifier.js';
 import { wrapPendingUserMessages } from './loop-helpers/user-message-queue.js';
 import { recoverPartialState } from './loop-helpers/abort-recovery.js';
 import {
-  findUnforkedDone,
-  POST_DONE_NUDGE_TEXT,
-} from './loop-helpers/post-done-enforce.js';
+  registerMainLoop,
+  unregisterMainLoop,
+  type MainLoopSnapshot,
+} from './main-loop-registry.js';
 import {
   isTimeoutLikeError,
   makeTimeoutRetryHandler,
@@ -115,6 +116,10 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
           reason: s.reason,
         }));
       },
+      // Lazy chatId getter — `fork_verifier_agent.execute()` reads this at
+      // fire time to look up its main-loop snapshot in the registry. Stable
+      // closure over `chatIdRef` so chat switches don't rebuild the agent.
+      getChatId: () => chatIdRef.current,
     });
     return new DirectChatTransport({ agent });
   }, [
@@ -417,101 +422,94 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
     };
   }, [projectId, chatId, keyTick, setMessages]);
 
-  // ───── Verifier sub-agent orchestration (P2-7) ─────
+  // ───── Verifier sub-agent orchestration ─────
   //
-  // Watch the assistant message stream for new `tool-fork_verifier_agent`
-  // parts that just transitioned to `output-available`. For each unseen
-  // toolCallId, spawn a verifier with the current message history, await
-  // the verdict, and inject it back as a new user message via
-  // `chat.sendMessage`. The dedup ref prevents re-spawning on every render.
+  // Aligned with official Claude Design (research v2 §10.5 + §14): the spawn
+  // happens INSIDE `fork_verifier_agent.execute()` (see `tools/fork-verifier.ts`),
+  // not from an effect watching message history. This hook only:
+  //
+  //   1. Registers a per-chat snapshot getter while the main agent loop is
+  //      mid-turn — mirrors official `Tb` map. When the chat is idle / hydrating
+  //      / errored, the registry is empty, so the fork tool's Guard #1 fires
+  //      and rejects spawn (the bug fix: reload no longer re-spawns verifiers
+  //      from persisted history).
+  //
+  //   2. Exposes `verifier` state for the UI (running flag + last verdict /
+  //      error) via callbacks the snapshot passes down to the tool.
   const [verifier, setVerifier] = useState<VerifierState>({
     running: false,
     lastResult: null,
     error: null,
   });
-  const processedForkCallsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const { provider } = getModelPref();
-    if (!byokKey.isSet(provider)) return;
-    for (const msg of chat.messages) {
-      if (msg.role !== 'assistant') continue;
-      for (const part of msg.parts) {
-        const p = part as {
-          type?: string;
-          state?: string;
-          toolCallId?: string;
-          input?: { instructions?: string };
-        };
-        if (
-          p.type !== 'tool-fork_verifier_agent' ||
-          p.state !== 'output-available' ||
-          !p.toolCallId
-        ) {
-          continue;
-        }
-        if (processedForkCallsRef.current.has(p.toolCallId)) continue;
-        processedForkCallsRef.current.add(p.toolCallId);
+    if (!chatId) return;
 
-        // Spawn verifier asynchronously and feed verdict back into main thread.
-        const apiKey = byokKey.get(provider);
-        if (!apiKey) continue;
-        setVerifier({ running: true, lastResult: null, error: null });
-        // Capture the chat id at SPAWN time so the verdict callback can tell
-        // whether the user has since switched chats. chatRef.current after
-        // the user clicks "New chat" points to a brand-new useChat instance
-        // (id changed → reinstanced) — calling .sendMessage on that one
-        // would leak this chat's verifier verdict into the unrelated new
-        // thread (observed bug: real-LLM deep run, S2's verdict landed in
-        // Chat 2). If the chat switched, drop the verdict to console + skip;
-        // a future enhancement should persist the verdict directly to D1
-        // for the spawning chatId.
-        const spawnedAtChatId = chatIdRef.current;
-        void spawnVerifier({
-          projectId: opts.projectId,
-          apiKey,
-          provider,
-          fidelity: opts.fidelity,
-          designSystemId: opts.designSystemId,
-          designSystemName: opts.designSystemName,
-          designSystemTokensCss: opts.designSystemTokensCss,
-          mainSessionId: chat.id,
-          mainMessages: chat.messages,
-          instructions: p.input?.instructions,
-        }).then(
-          (result) => {
-            setVerifier({ running: false, lastResult: result, error: null });
-            if (chatIdRef.current !== spawnedAtChatId) {
-              console.warn(
-                `[verifier] verdict for chat ${spawnedAtChatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}). Verdict: ${result.verdict} — ${result.description.slice(0, 120)}`,
-              );
-              return;
-            }
-            const c = chatRef.current;
-            void c.sendMessage({ text: formatVerdictForMain(result) });
-            persistThread(c.messages);
-          },
-          (err: unknown) => {
-            const error = err instanceof Error ? err : new Error(String(err));
-            setVerifier({ running: false, lastResult: null, error });
-            if (chatIdRef.current !== spawnedAtChatId) {
-              console.warn(
-                `[verifier] error for chat ${spawnedAtChatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}): ${error.message}`,
-              );
-              return;
-            }
-            const c = chatRef.current;
-            void c.sendMessage({
-              text: `A background task has completed. Here are the results:\n\n⚠️ Verifier crashed: ${error.message}`,
-            });
-            persistThread(c.messages);
-          },
-        );
-      }
+    // Only register while a main agent turn is actively in flight. Outside
+    // that window the snapshot is absent, so the fork tool can't spawn from
+    // hydration / reload / stale renders.
+    const isInFlight = chat.status === 'streaming' || chat.status === 'submitted';
+    if (!isInFlight) {
+      unregisterMainLoop(chatId);
+      return;
     }
+
+    const getter: () => MainLoopSnapshot = () => {
+      const { provider } = getModelPref();
+      const apiKey = byokKey.get(provider) ?? '';
+      return {
+        projectId: opts.projectId,
+        apiKey,
+        provider,
+        fidelity: opts.fidelity,
+        designSystemId: opts.designSystemId,
+        designSystemName: opts.designSystemName,
+        designSystemTokensCss: opts.designSystemTokensCss,
+        mainSessionId: chatRef.current.id,
+        messages: chatRef.current.messages as DesignAgentUIMessage[],
+        onSpawnStart: () => {
+          setVerifier({ running: true, lastResult: null, error: null });
+        },
+        onVerdict: (result) => {
+          setVerifier({ running: false, lastResult: result, error: null });
+          // Cross-chat-switch guard: if the user switched chats between fork
+          // and verdict, drop the verdict (it would otherwise leak into an
+          // unrelated thread via the recreated useChat instance).
+          if (chatIdRef.current !== chatId) {
+            console.warn(
+              `[verifier] verdict for chat ${chatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}). Verdict: ${result.verdict} — ${result.description.slice(0, 120)}`,
+            );
+            return;
+          }
+          const c = chatRef.current;
+          void c.sendMessage({ text: formatVerdictForMain(result) });
+          persistThread(c.messages);
+        },
+        onError: (err) => {
+          setVerifier({ running: false, lastResult: null, error: err });
+          if (chatIdRef.current !== chatId) {
+            console.warn(
+              `[verifier] error for chat ${chatId} dropped (user switched to ${chatIdRef.current ?? 'unknown'}): ${err.message}`,
+            );
+            return;
+          }
+          const c = chatRef.current;
+          void c.sendMessage({
+            text: `A background task has completed. Here are the results:\n\n⚠️ Verifier crashed: ${err.message}`,
+          });
+          persistThread(c.messages);
+        },
+      };
+    };
+
+    registerMainLoop(chatId, getter);
+
+    return () => {
+      unregisterMainLoop(chatId);
+    };
   }, [
-    chat.messages,
-    chat.id,
+    chatId,
+    chat.status,
     opts.projectId,
     opts.fidelity,
     opts.designSystemId,
@@ -519,27 +517,6 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
     opts.designSystemTokensCss,
     persistThread,
   ]);
-
-  // ───── Hard-enforce fork_verifier_agent post-done (handoff §P1 option 3) ─────
-  //
-  // Even with the v2-aligned `done`-tool nudge ("Next: call
-  // fork_verifier_agent (or end your turn if this was a trivial tweak)."),
-  // Haiku 4.5 sometimes skips the fork. When the loop has settled into a
-  // text-only assistant turn AFTER an output-available `done` with no
-  // intervening fork_verifier_agent, we inject a user-role reminder so the
-  // model gets a second chance — and the user doesn't silently miss QA.
-  //
-  // Dedupe by done.toolCallId so we don't loop on the reminder.
-  const nudgedDoneCallsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (chat.status !== 'ready') return;
-    const finding = findUnforkedDone(chat.messages);
-    if (!finding) return;
-    if (nudgedDoneCallsRef.current.has(finding.doneToolCallId)) return;
-    nudgedDoneCallsRef.current.add(finding.doneToolCallId);
-    const c = chatRef.current;
-    void c.sendMessage({ text: POST_DONE_NUDGE_TEXT });
-  }, [chat.messages, chat.status]);
 
   return {
     messages: chat.messages,

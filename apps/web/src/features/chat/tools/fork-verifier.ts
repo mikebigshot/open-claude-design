@@ -1,34 +1,49 @@
-// fork_verifier_agent — main agent calls this after a coherent unit of work
-// to spawn a verifier sub-agent that QAs the output. The execute fn here is a
-// pure signal: it returns a marker indicating "verifier should be spawned".
-// The actual fork happens in `verifier.ts`'s `spawnVerifier()`, which the
-// `useAgentChat` hook invokes when it sees a `tool-fork_verifier_agent` part
-// transition to `output-available`.
+// fork_verifier_agent — spawn a verifier sub-agent INLINE from the tool
+// execute(). Mirrors the official Claude Design implementation (research v2
+// §10.5 + §14.2):
 //
-// Source-of-truth contract:
-//   - Tool name MUST be `fork_verifier_agent` (protocol literal).
+//   - `execute()` does the real spawn — there is NO effect watching message
+//     history. This means reload / hydration cannot re-spawn a verifier:
+//     `execute()` only runs when the main agent loop is currently in a turn
+//     and the LLM emits a `fork_verifier_agent` tool_use block.
+//
+//   - Two guards exactly mirror the official `Tb` map + `tee()` check:
+//       Guard #1 (snapshot presence): if no main loop is registered for the
+//         active chatId, return an `isError` tool_result. This kills the
+//         "page reload spawns verifier from history" anti-pattern at the
+//         root — `getMainLoopSnapshot()` is null whenever the main loop is
+//         not currently mid-turn.
+//       Guard #2 (single-verifier-per-chat): if a verifier is already
+//         running for `<chatId>::verifier`, reject with an `isError`. The
+//         viewport lock releases when spawnVerifier resolves / rejects /
+//         times out.
+//
+//   - Returns immediately with the v2 `__async` placeholder shape. The
+//     verifier streams in the background; its verdict is fed back as a
+//     fresh user message via the snapshot's `onVerdict` callback (which the
+//     `useAgentChat` registration wires to `chat.sendMessage`).
+//
+// Source-of-truth contract (per CLAUDE.md §"协议字面量"):
+//   - Tool name MUST be `fork_verifier_agent`.
 //   - Verifier session id = `<main session uuid>::verifier`.
 //   - Verifier inherits the main agent's full message history.
-//   - Verifier exits via `verification_feedback` (the only valid exit).
+//   - Verifier exits via `verification_feedback` only.
+//   - Input field name is `task` (matches official; old chats persisted with
+//     `instructions:` are just historical records — they don't get re-fired).
 //
-// Per §"协议字面量" of CLAUDE.md, the literal `fork_verifier_agent` name +
-// the `::verifier` suffix are protocol bits — do not rename.
-//
-// W1 §2.6 — `__async` placeholder protocol (Anthropic v2 alignment):
-//   The execute() return value carries the v2-shape `{__async, _toolName,
-//   _label, placeholder}` fields IN ADDITION TO the legacy `verifierSpawned`
-//   / `instructions` / `message` fields. This means:
-//     - the orchestrator (use-agent-chat.ts) keeps detecting fork via the
-//       legacy `tool-fork_verifier_agent` part transition (no churn);
-//     - any future dispatcher / wrapper that wants to honor the v2 protocol
-//       (place the placeholder string into the LLM's context, surface the
-//       label in the UI activity stream) can read the `__async` fields.
-//   Placeholder text is verbatim from
-//   `wonderful-mendeleev-5231a7/.../artifacts/agent-loop/verifier-tools-and-fork-boundary.raw.js`
-//   so the LLM sees exactly what the official agent loop emits.
+// Placeholder text is verbatim from
+//   `internal/docs/research/claude-design-v2/artifacts/agent-loop/
+//    verifier-tools-and-fork-boundary.raw.js`
+// so the LLM sees exactly what the official agent loop emits.
 
 import { tool } from 'ai';
 import { z } from 'zod';
+import {
+  getMainLoopSnapshot,
+  tryAcquireVerifier,
+  releaseVerifier,
+} from '../main-loop-registry.js';
+import { spawnVerifier } from '../verifier.js';
 
 const PLACEHOLDER_FULL_SWEEP =
   'Verifier subagent forked and running in the background. This is NOT the fork — you are still the main agent. The verifier will only call back if it finds issues; no news is good news. End your turn.';
@@ -36,45 +51,115 @@ const PLACEHOLDER_FULL_SWEEP =
 const PLACEHOLDER_DIRECTED_CHECK =
   'Verifier subagent forked for a directed check. This is NOT the fork — you are still the main agent. The verifier will report back regardless of verdict. End your turn.';
 
-export function forkVerifierTool() {
+const ERR_NO_SNAPSHOT =
+  'Error: verifier snapshot unavailable (agent loop did not register the hook). The main agent loop must be in a turn for `fork_verifier_agent` to spawn — this tool cannot be called during chat hydration or from a stale render.';
+
+const ERR_ALREADY_RUNNING =
+  'Error: a verifier subagent is already running for this chat. Wait for its verdict before forking again.';
+
+const ERR_NO_CHAT_ID =
+  'Error: no active chat id at the time of fork. This usually means the workspace is still hydrating; retry once the chat is loaded.';
+
+export interface ForkVerifierToolDeps {
+  /** Lazy getter so the active chatId is read at execute time, not at agent-build time. */
+  getChatId: () => string | null;
+}
+
+export function forkVerifierTool(deps: ForkVerifierToolDeps) {
   return tool({
     description: [
-      'Spawn a verifier sub-agent to QA the work you just did. Use this AFTER',
-      'completing a substantive coherent unit (a screen, a feature, an edit',
-      'iteration) and BEFORE calling `done`. The verifier inherits your full',
-      'context, reads the files you wrote, checks for syntax / logic / missing',
-      'pieces, and returns a verdict (`done` or `needs_work`). If the verdict',
-      'is `needs_work`, address the feedback before marking done.',
+      'Fork a verifier subagent to check your output. The verifier inherits',
+      'your full transcript, reads the files you wrote, takes screenshots,',
+      'checks console logs, and reports back. Runs in the background — you',
+      'get the verdict later as a new user message. Two modes:',
       '',
-      'Optional `instructions` lets you hint at what to look for (e.g. "double',
-      'check the new dropdown handles outside-click").',
+      '(1) **Full sweep** — call with no args AFTER `done` reports clean.',
+      'Silent on pass, only wakes you if something is wrong.',
+      '',
+      '(2) **Directed check** — pass `task` (e.g. "screenshot and check the',
+      'spacing") for a mid-task probe; ALWAYS reports back regardless of',
+      'verdict, no `done` required first.',
     ].join(' '),
     inputSchema: z.object({
-      instructions: z
+      task: z
         .string()
         .optional()
-        .describe('Optional hints for the verifier — what aspects of the recent work to focus on.'),
+        .describe(
+          'Optional: a specific thing to check (e.g. "screenshot and check spacing", "eval_js to verify the slider works"). When set, the verifier focuses on this and ALWAYS reports back, even on pass. When omitted, the verifier does a full sweep and stays silent on pass.',
+        ),
     }),
-    execute: async ({ instructions }) => {
-      const trimmedInstructions = (instructions ?? '').trim();
-      const directed = trimmedInstructions.length > 0;
-      // Pure signal — the orchestrator (use-agent-chat) detects this output
-      // and spawns the verifier with the inherited history. We don't run the
-      // verifier here because tool execute is sync-ish and we want the
-      // verifier to stream back through its own Chat instance.
-      //
-      // Both the legacy fields AND the v2 `__async` protocol fields are
-      // present so downstream consumers can pick whichever is convenient.
+    execute: async ({ task }) => {
+      // Guard #0 — must have an active chat to derive the viewport key.
+      const chatId = deps.getChatId();
+      if (!chatId) {
+        return { isError: true, content: ERR_NO_CHAT_ID };
+      }
+
+      // Guard #1 — main loop snapshot must exist (mirror of official `Tb.get(chatId)`).
+      // This is the load-bearing guard: reload / hydration / stale render
+      // all hit this branch because no main loop registers itself outside a
+      // streaming turn.
+      const snapshot = getMainLoopSnapshot(chatId);
+      if (!snapshot) {
+        return { isError: true, content: ERR_NO_SNAPSHOT };
+      }
+
+      // Guard #2 — single verifier per chat viewport (mirror of `tee(s)`).
+      const viewportKey = `${chatId}::verifier`;
+      if (!tryAcquireVerifier(viewportKey)) {
+        return { isError: true, content: ERR_ALREADY_RUNNING };
+      }
+
+      const trimmedTask = (task ?? '').trim();
+      const directed = trimmedTask.length > 0;
+
+      // Flip UI state to "verifier running" before kicking off the spawn so
+      // the panel can show a spinner / activity item right away.
+      snapshot.onSpawnStart();
+
+      // Fire-and-forget: the LLM sees the placeholder immediately and ends
+      // its turn (per v2 §10.5 the placeholder text instructs the model NOT
+      // to wait). The verdict re-enters the main thread as a fresh user
+      // message via snapshot.onVerdict (wired to chat.sendMessage by
+      // useAgentChat).
+      void spawnVerifier({
+        projectId: snapshot.projectId,
+        apiKey: snapshot.apiKey,
+        provider: snapshot.provider,
+        fidelity: snapshot.fidelity,
+        designSystemId: snapshot.designSystemId,
+        designSystemName: snapshot.designSystemName,
+        designSystemTokensCss: snapshot.designSystemTokensCss,
+        mainSessionId: snapshot.mainSessionId,
+        mainMessages: snapshot.messages,
+        instructions: trimmedTask || undefined,
+      })
+        .then(
+          (result) => {
+            try {
+              snapshot.onVerdict(result);
+            } catch (err) {
+              console.error('[fork_verifier_agent] onVerdict callback threw', err);
+            }
+          },
+          (err: unknown) => {
+            const wrapped = err instanceof Error ? err : new Error(String(err));
+            try {
+              snapshot.onError(wrapped);
+            } catch (cbErr) {
+              console.error('[fork_verifier_agent] onError callback threw', cbErr);
+            }
+          },
+        )
+        .finally(() => {
+          releaseVerifier(viewportKey);
+        });
+
       return {
-        // ── v2 __async protocol ─────────────────────────────────────────────
         __async: true as const,
         _toolName: 'fork_verifier_agent' as const,
-        _label: directed ? `Verifier: ${trimmedInstructions.slice(0, 40)}` : 'Verifier',
+        _label: directed ? `Verifier: ${trimmedTask.slice(0, 40)}` : 'Verifier',
         placeholder: directed ? PLACEHOLDER_DIRECTED_CHECK : PLACEHOLDER_FULL_SWEEP,
-        // ── legacy signal (use-agent-chat orchestrator) ─────────────────────
-        verifierSpawned: true as const,
-        instructions: trimmedInstructions,
-        message: 'Verifier sub-agent spawned. The verdict will arrive as a separate user message.',
       };
     },
   });

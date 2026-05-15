@@ -55,6 +55,16 @@ export interface CreateAgentOptions {
    * the buffer is wide. Caller may pass `model.maxTokens * 0.7` if known.
    */
   snipThreshold?: number;
+  /**
+   * Active chat id getter — needed by `fork_verifier_agent` to read its
+   * main-loop snapshot from the registry, and by preview-side tools (snip,
+   * eval_js, screenshot, …) to find the matching iframe. A getter (not a
+   * value) so chat switches within the same project don't require
+   * recreating the agent. Defaults to `() => null` (main-loop registry will
+   * reject fork attempts), which is what the verifier sub-agent uses since
+   * it shouldn't fork itself anyway.
+   */
+  getChatId?: () => string | null;
 }
 
 /**
@@ -98,6 +108,10 @@ export function createAgent(opts: CreateAgentOptions) {
         projectId: opts.projectId,
         skills: SKILLS,
         onTodosUpdate: opts.onTodosUpdate,
+        // `getChatId` is read by fork_verifier_agent (to look up its
+        // main-loop snapshot) and by snip / preview-side tools. Pass-through
+        // the getter so chat switches don't require rebuilding tools.
+        ...(opts.getChatId ? { getChatId: () => opts.getChatId!() ?? 'default' } : {}),
       }),
       mode,
     ),

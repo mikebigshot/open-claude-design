@@ -91,7 +91,7 @@ describe('buildBlock2', () => {
     expect(footerIdx).toBeGreaterThan(overrideIdx);
   });
 
-  it('renders the verifier sub-agent guidance section', () => {
+  it('renders the verifier sub-agent guidance section (aligned with official: fork AFTER done)', () => {
     const out = buildBlock2({
       designSystemId: undefined,
       skills: [],
@@ -101,8 +101,12 @@ describe('buildBlock2', () => {
     expect(out).toContain('Verifier sub-agent (`fork_verifier_agent`)');
     expect(out).toContain('verification_feedback');
     expect(out).toContain('A background task has completed');
-    // Guidance against recursive forks.
-    expect(out).toContain('no recursive self-verification');
+    // Official ordering: fork AFTER done reports clean (research v2 §03 + §14).
+    expect(out).toMatch(/Once `done` reports clean,? call `fork_verifier_agent`/);
+    // Directed-check mode with `task` parameter.
+    expect(out).toContain('fork_verifier_agent({task');
+    // Guard against re-forking when current message is itself a verdict.
+    expect(out).toMatch(/do not call `fork_verifier_agent` again/i);
   });
 
   it('places the verifier guidance after the override and before the footer', () => {

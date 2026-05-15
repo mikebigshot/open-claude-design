@@ -30,8 +30,24 @@ video, audio { display: none !important; }
 </style>`;
 
 function injectThumbnailStyle(srcDoc: string): string {
-  if (/<\/head>/i.test(srcDoc)) {
-    return srcDoc.replace(/<\/head>/i, `${THUMBNAIL_STYLE}</head>`);
+  // Use the LAST `</head>` close-tag — the real document close — rather than
+  // a non-anchored regex that picks the first match. iframe-runtime injects a
+  // `<script>` in <head> whose body is a JSON-stringified copy of the agent
+  // script; agent HTML files often contain a literal `</head>` substring, so a
+  // first-match regex injects the thumbnail style INSIDE that script's string
+  // literal, breaking it with a SyntaxError (real newlines from the injected
+  // <style> block end up inside a JS string).
+  const lastHeadCloseIdx = (() => {
+    const re = /<\/head\s*>/gi;
+    let last = -1;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(srcDoc)) !== null) last = m.index;
+    return last;
+  })();
+  if (lastHeadCloseIdx >= 0) {
+    return (
+      srcDoc.slice(0, lastHeadCloseIdx) + THUMBNAIL_STYLE + srcDoc.slice(lastHeadCloseIdx)
+    );
   }
   return THUMBNAIL_STYLE + srcDoc;
 }

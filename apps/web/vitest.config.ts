@@ -11,6 +11,14 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Mirror vite.config.ts: pin workspace packages to the CURRENT
+      // checkout's source. Without this, vitest resolves
+      // `@open-design/iframe-runtime` and `@open-design/contracts` through
+      // node_modules — which the worktree setup symlinks back to the MAIN
+      // repo's checkout, hiding local edits and giving tests a stale view
+      // of the package source.
+      '@open-design/iframe-runtime': path.resolve(__dirname, '../../packages/iframe-runtime/src'),
+      '@open-design/contracts': path.resolve(__dirname, '../../packages/contracts/src'),
     },
   },
   test: {

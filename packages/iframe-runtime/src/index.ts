@@ -36,6 +36,14 @@ export type { BundleFile, BuildSrcdocOptions } from './build-srcdoc';
 export { buildHtmlSrcdoc, pickHtmlEntry, isHtmlOnlyBundle } from './build-html-srcdoc';
 export type { BuildHtmlSrcdocOptions } from './build-html-srcdoc';
 
+// Inline error handler — iframe 内编译/运行时错误的 placeholder 渲染
+export {
+  buildInlineErrorHandlerScript,
+  INLINE_ERROR_PLACEHOLDER_ATTR,
+  INLINE_ERROR_SOURCE_GLOBAL,
+  INLINE_ERROR_RENDER_GLOBAL,
+} from './inline-error-handler';
+
 // Overlay 注入
 export { buildOverlayScript } from './overlay';
 
