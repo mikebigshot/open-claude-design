@@ -256,6 +256,8 @@ export const ru: Dict = {
   'chat.tool.screenshotting': 'СНИМОК',
   'chat.tool.evaluating': 'EVAL',
   'chat.tool.logs': 'ЛОГИ',
+  'chat.tool.opening': 'ОТКР',
+  'chat.tool.downloading': 'СКАЧ',
 
   'comments.errorLoad':
     'Не удалось загрузить комментарии: {error}. Перезагрузите страницу, чтобы попробовать снова.',

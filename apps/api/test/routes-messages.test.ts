@@ -144,6 +144,55 @@ describe('routes/messages', () => {
     expect(getBody.messages).toEqual(messages);
   });
 
+  it('PUT then GET preserves skill / designSystem attachments[] on user messages', async () => {
+    // Skill attachments live inside the UIMessage JSON (data column). The
+    // round-trip should preserve the array verbatim so ChatMsg can render
+    // chips on reload (research/claude-design-v2 §13 / P0 strip fallback +
+    // P2 native field).
+    const app = makeTestApp();
+    const project = await createProject(app);
+    const chat = await createChat(app, project.id);
+
+    const msgs = [
+      {
+        id: 'u1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'please make a deck' }],
+        attachments: [
+          {
+            id: 'a1',
+            name: 'Make a deck',
+            type: 'skill',
+            content: 'Full skill prompt body…',
+          },
+          {
+            id: 'a2',
+            name: 'Linear DS',
+            type: 'designSystem',
+            content: '--primary: #5e6ad2',
+          },
+        ],
+      },
+    ];
+
+    const putRes = await app.request(`/api/projects/${project.id}/messages`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chatId: chat.id, messages: msgs }),
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await app.request(`/api/projects/${project.id}/messages?chatId=${chat.id}`, {
+      method: 'GET',
+    });
+    expect(getRes.status).toBe(200);
+    const getBody = (await getRes.json()) as ListMessagesResponse;
+    const reloaded = getBody.messages[0] as unknown as {
+      attachments?: Array<{ id: string; name: string; type: string; content: string }>;
+    };
+    expect(reloaded.attachments).toEqual(msgs[0]!.attachments);
+  });
+
   it('PUT replaces the whole thread (DELETE + INSERT) within a single chat', async () => {
     const app = makeTestApp();
     const project = await createProject(app);

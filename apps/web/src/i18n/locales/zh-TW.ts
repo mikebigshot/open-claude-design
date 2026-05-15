@@ -254,6 +254,8 @@ export const zhTW: Dict = {
   'chat.tool.screenshotting': '截圖',
   'chat.tool.evaluating': '執行',
   'chat.tool.logs': '日誌',
+  'chat.tool.opening': '開啟',
+  'chat.tool.downloading': '下載',
 
   'comments.errorLoad': '無法載入評論：{error}。請重新整理頁面再試。',
   'comments.errorPartial': '無法重新載入所有評論：{error}。下方列表可能不完整。',

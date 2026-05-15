@@ -1,10 +1,15 @@
 // makeTools — agent v2 alignment. Mode-gated tool surface:
 //   - main mode (default): 14 baseline + snip + questions_v2 + register_assets
-//                          + eval_js_user_view + screenshot_user_view = 19 tools
+//                          + open_for_print + present_fs_item_for_download
+//                          + eval_js_user_view + screenshot_user_view = 21 tools
 //   - verifier mode: 14 baseline + snip + questions_v2 + register_assets
-//                    + eval_js + screenshot + get_webview_logs + multi_screenshot = 21 tools
+//                    + open_for_print + present_fs_item_for_download
+//                    + eval_js + screenshot + get_webview_logs
+//                    + multi_screenshot = 23 tools
 //
-// Verifier-only and main-only tools never overlap.
+// Verifier-only and main-only tools never overlap. `open_for_print` and
+// `present_fs_item_for_download` (research/claude-design-v2 §13) are
+// universal — both surfaces export artifacts to the user.
 
 import { describe, expect, it } from 'vitest';
 import { makeTools } from './index';
@@ -18,7 +23,7 @@ const baseCtx = {
 };
 
 describe('makeTools — agent v2 alignment surface', () => {
-  it('main mode (default) exposes the 19 expected tools', () => {
+  it('main mode (default) exposes the 21 expected tools', () => {
     const tools = makeTools(baseCtx);
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
@@ -29,6 +34,8 @@ describe('makeTools — agent v2 alignment surface', () => {
       'grep',
       'invoke_skill',
       'list_files',
+      'open_for_print',
+      'present_fs_item_for_download',
       'questions_v2',
       'read_file',
       'register_assets',
@@ -43,7 +50,7 @@ describe('makeTools — agent v2 alignment surface', () => {
     ]);
   });
 
-  it('verifier mode exposes the 21 expected tools (verifier-only set, no user-view siblings)', () => {
+  it('verifier mode exposes the 23 expected tools (verifier-only set, no user-view siblings)', () => {
     const tools = makeTools({ ...baseCtx, mode: 'verifier' });
     expect(Object.keys(tools).sort()).toEqual([
       'copy_files',
@@ -56,6 +63,8 @@ describe('makeTools — agent v2 alignment surface', () => {
       'invoke_skill',
       'list_files',
       'multi_screenshot',
+      'open_for_print',
+      'present_fs_item_for_download',
       'questions_v2',
       'read_file',
       'register_assets',

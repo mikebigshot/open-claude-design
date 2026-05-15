@@ -257,6 +257,8 @@ export const fr: Dict = {
   'chat.tool.screenshotting': 'CAPTURE',
   'chat.tool.evaluating': 'ÉVAL',
   'chat.tool.logs': 'LOGS',
+  'chat.tool.opening': 'OUVRIR',
+  'chat.tool.downloading': 'TÉLÉCH',
 
   'comments.errorLoad':
     'Impossible de charger les commentaires : {error}. Rechargez la page pour réessayer.',

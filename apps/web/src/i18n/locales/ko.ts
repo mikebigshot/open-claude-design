@@ -255,6 +255,8 @@ export const ko: Dict = {
   'chat.tool.screenshotting': '스샷',
   'chat.tool.evaluating': '실행',
   'chat.tool.logs': '로그',
+  'chat.tool.opening': '열기',
+  'chat.tool.downloading': '다운',
 
   'comments.errorLoad': '코멘트를 불러올 수 없음: {error}. 페이지를 새로고침하여 다시 시도하세요.',
   'comments.errorPartial':

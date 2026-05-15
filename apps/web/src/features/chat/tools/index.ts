@@ -12,6 +12,8 @@ import { grepTool } from './grep.js';
 import { invokeSkillTool } from './invoke-skill.js';
 import { listFilesTool } from './list-files.js';
 import { multiScreenshotTool } from './multi-screenshot.js';
+import { openForPrintTool } from './open-for-print.js';
+import { presentFsItemForDownloadTool } from './present-for-download.js';
 import { questionsV2Tool } from './questions-v2.js';
 import { readFileTool } from './read-file.js';
 import { registerAssetsTool } from './register-assets.js';
@@ -76,6 +78,13 @@ export function makeTools(ctx: MakeToolsContext) {
     snip: snipTool({ getChatId }),
     questions_v2: questionsV2Tool(),
     register_assets: registerAssetsTool(ctx.projectId),
+    // v2 deck/PPT alignment (research §13) — Save as PDF skill calls this
+    // to open the deck/document HTML in a new tab so the OS print dialog
+    // can produce a clean PDF. present_fs_item_for_download is used by
+    // the standalone-HTML and (future) PPTX skills to actually deliver
+    // the exported artifact to the user.
+    open_for_print: openForPrintTool(ctx.projectId),
+    present_fs_item_for_download: presentFsItemForDownloadTool(ctx.projectId),
   };
 
   if (mode === 'verifier') {

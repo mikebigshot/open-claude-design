@@ -55,12 +55,47 @@ describe('built-in registry (loaded via Vite glob)', () => {
       expect.arrayContaining([expect.objectContaining({ path: 'template.jsx' })]),
     );
   });
+
+  // v2 alignment §13 Step E — slide-deck body must carry the structural
+  // elements v2's "Make a deck" prompt has: role reframe, speaker-notes
+  // JSON protocol, explicit done criteria, and exports cross-reference.
+  it('slide-deck body has v2-aligned role reframe + speaker-notes + done', () => {
+    const body = SKILLS['slide-deck']?.body ?? '';
+    // Role reframe (mirrors v2's "Assume this role: you are a presentation
+    // designer …"). Wording is intentionally specific.
+    expect(body).toMatch(/presentation designer/i);
+    // Speaker-notes script tag protocol (consumed by gen_pptx in the future).
+    expect(body).toMatch(/<script type="application\/json" id="speaker-notes"/);
+    // Done criteria section heading.
+    expect(body).toMatch(/##\s*Done criteria/);
+    // Cross-reference to export skills.
+    expect(body).toMatch(/Save as PDF/);
+    expect(body).toMatch(/Save as standalone HTML/);
+  });
   it('interactive-prototype loads with router-example.jsx reference', () => {
     expect(SKILLS['interactive-prototype']?.frontmatter.name).toBe('Interactive prototype');
     const refs = SKILLS['interactive-prototype']?.references ?? [];
     expect(refs).toEqual(
       expect.arrayContaining([expect.objectContaining({ path: 'router-example.jsx' })]),
     );
+  });
+
+  // v2 alignment plan §13 — 4 export / utility skills added 2026-05-12.
+  // Names must match v2 verbatim (used as the chip label + skill-attachment
+  // `name` attribute key).
+  it('make-tweakable loads (4-of-4 MVP skill coverage)', () => {
+    expect(SKILLS['make-tweakable']?.frontmatter.name).toBe('Make tweakable');
+    expect(SKILLS['make-tweakable']?.frontmatter.description).toMatch(/tweak/i);
+  });
+
+  it('save-as-standalone-html loads (single self-contained file)', () => {
+    expect(SKILLS['save-as-standalone-html']?.frontmatter.name).toBe(
+      'Save as standalone HTML',
+    );
+  });
+
+  it('save-as-pdf loads (print-ready PDF export)', () => {
+    expect(SKILLS['save-as-pdf']?.frontmatter.name).toBe('Save as PDF');
   });
 
   // ── listSkills hidden filter (master spec §4.4) ────────────────────────

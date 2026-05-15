@@ -313,6 +313,8 @@ export interface Dict {
   'chat.tool.screenshotting': string;
   'chat.tool.evaluating': string;
   'chat.tool.logs': string;
+  'chat.tool.opening': string;
+  'chat.tool.downloading': string;
 
   // CommentsTab
   'comments.errorLoad': string;

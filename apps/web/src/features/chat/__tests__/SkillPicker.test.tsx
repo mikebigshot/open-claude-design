@@ -12,6 +12,7 @@ import { ThemeProvider } from 'styled-components';
 
 import { I18nProvider } from '@/i18n';
 import { SkillPicker } from '../SkillPicker';
+import { SKILLS } from '@/skills/registry';
 import { theme } from '@/theme/theme';
 
 function renderPicker(props: Partial<React.ComponentProps<typeof SkillPicker>> = {}): {
@@ -44,11 +45,18 @@ describe('SkillPicker', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders one menuitem per built-in skill (4 OSS skills)', () => {
+  it('renders one menuitem per built-in skill (matches SKILLS registry count)', () => {
+    // Asserting the live registry size keeps this test from drifting every
+    // time we add a v2-aligned skill — 4 → 7 happened in the deck/PPT
+    // alignment pass (research/claude-design-v2 §13).
     renderPicker();
     const menu = screen.getByRole('menu', { name: /skill picker/i });
     const items = menu.querySelectorAll('[role="menuitem"]');
-    expect(items.length).toBe(4);
+    const visibleCount = Object.values(SKILLS).filter(
+      (s) => !s.frontmatter.hidden,
+    ).length;
+    expect(items.length).toBe(visibleCount);
+    expect(items.length).toBeGreaterThanOrEqual(4);
   });
 
   it('renders skill name + description for each skill', () => {

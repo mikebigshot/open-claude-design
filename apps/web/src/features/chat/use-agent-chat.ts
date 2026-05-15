@@ -12,6 +12,10 @@ import type { DesignAgentUIMessage, Attachment } from './ui-messages.js';
 import { spawnVerifier, formatVerdictForMain, type VerifierResult } from './verifier.js';
 import { wrapPendingUserMessages } from './loop-helpers/user-message-queue.js';
 import { recoverPartialState } from './loop-helpers/abort-recovery.js';
+import {
+  findUnforkedDone,
+  POST_DONE_NUDGE_TEXT,
+} from './loop-helpers/post-done-enforce.js';
 import { inlineAttachmentsIntoText } from './attachment-inline.js';
 import { getRegisteredSnips } from './tools/snip.js';
 
@@ -303,6 +307,14 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
       // F2: stamp the original attachments[] onto the just-pushed user
       // message so ChatMsg can render skill chips both during this session
       // AND after a reload (the persist round-trip carries the field).
+      //
+      // P2 race fix: `c.setMessages` is async — reading `c.messages` for
+      // persistThread immediately after will see the pre-update snapshot
+      // and drop the attachments[] from the FIRST PUT. We capture the
+      // computed next-array into a closure variable so persistThread sees
+      // the post-update state. (A subsequent onFinish round will also re-
+      // persist; this fix protects users who reload fast.)
+      let messagesToPersist: DesignAgentUIMessage[] = c.messages;
       if (attachmentsToPersist && attachmentsToPersist.length > 0) {
         c.setMessages((current) => {
           // Find the LAST user message — that's the one we just pushed.
@@ -321,10 +333,11 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
           };
           const next = current.slice();
           next[lastUserIdx] = updated as (typeof current)[number];
+          messagesToPersist = next as DesignAgentUIMessage[];
           return next;
         });
       }
-      persistThread(c.messages);
+      persistThread(messagesToPersist);
       return promise;
     }) as typeof chat.sendMessage,
     [persistThread],
@@ -447,6 +460,27 @@ export function useAgentChat(opts: UseAgentChatOptions): UseAgentChatHandle {
     opts.designSystemTokensCss,
     persistThread,
   ]);
+
+  // ───── Hard-enforce fork_verifier_agent post-done (handoff §P1 option 3) ─────
+  //
+  // Even with the v2-aligned `done`-tool nudge ("Next: call
+  // fork_verifier_agent (or end your turn if this was a trivial tweak)."),
+  // Haiku 4.5 sometimes skips the fork. When the loop has settled into a
+  // text-only assistant turn AFTER an output-available `done` with no
+  // intervening fork_verifier_agent, we inject a user-role reminder so the
+  // model gets a second chance — and the user doesn't silently miss QA.
+  //
+  // Dedupe by done.toolCallId so we don't loop on the reminder.
+  const nudgedDoneCallsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (chat.status !== 'ready') return;
+    const finding = findUnforkedDone(chat.messages);
+    if (!finding) return;
+    if (nudgedDoneCallsRef.current.has(finding.doneToolCallId)) return;
+    nudgedDoneCallsRef.current.add(finding.doneToolCallId);
+    const c = chatRef.current;
+    void c.sendMessage({ text: POST_DONE_NUDGE_TEXT });
+  }, [chat.messages, chat.status]);
 
   return {
     messages: chat.messages,

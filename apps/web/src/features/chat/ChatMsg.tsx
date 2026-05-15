@@ -34,6 +34,7 @@ import { useT } from '@/i18n';
 import { IconLogo } from './icons';
 import { formatAnswers, QuestionsForm } from './QuestionsForm';
 import type { QuestionsV2InputT } from './tools/questions-v2';
+import { stripAttachmentBlocks } from './strip-attachment-blocks';
 import type { DesignAgentUIMessage } from './ui-messages';
 
 type TFn = ReturnType<typeof useT>;
@@ -208,10 +209,15 @@ export function ChatMsg({
     // User messages: text parts as bubble text + image file parts as thumbnail row.
     // Without the file-part branch, paste/upload attachments disappear from chat
     // history after send (regression observed against claude.ai/design parity).
-    const textContent = message.parts
+    const rawText = message.parts
       .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
       .map((p) => p.text)
       .join('');
+    // sendMessage in use-agent-chat.ts inlines skill / designSystem / file
+    // attachments as XML wrappers before the user prose for the LLM. Strip
+    // them out of the user-visible bubble; the chip surface stays.
+    const stripped = stripAttachmentBlocks(rawText);
+    const textContent = stripped.visibleText;
     const imageParts = message.parts.filter(
       (p): p is Extract<typeof p, { type: 'file' }> =>
         p.type === 'file' && (p.mediaType?.startsWith('image/') ?? false),
@@ -232,7 +238,7 @@ export function ChatMsg({
             ))}
           </UserAttachments>
         )}
-        {attachments && attachments.length > 0 && (
+        {attachments && attachments.length > 0 ? (
           <AttachmentChips>
             {attachments.map((att) => (
               <AttachmentChip
@@ -245,7 +251,23 @@ export function ChatMsg({
               </AttachmentChip>
             ))}
           </AttachmentChips>
-        )}
+        ) : stripped.chips.length > 0 ? (
+          // Fallback: persisted thread without attachments[] (P2 pending) —
+          // synthesise chips from the stripped XML so the reader still sees
+          // what was attached.
+          <AttachmentChips>
+            {stripped.chips.map((chip, i) => (
+              <AttachmentChip
+                key={`stripped-${i}`}
+                data-testid={`attachment-chip-stripped-${i}`}
+                title={chip.name}
+              >
+                <AttachmentChipKind>{labelForStrippedType(chip.type)}:</AttachmentChipKind>
+                {chip.name}
+              </AttachmentChip>
+            ))}
+          </AttachmentChips>
+        ) : null}
       </UserBubble>
     );
   }
@@ -542,6 +564,19 @@ function toolDisplay(
         verbColor: c('fg300'),
         target: '',
       };
+    // ── v2 deck/PPT alignment tools (research §13) ──
+    case 'tool-open_for_print':
+      return {
+        verb: t('chat.tool.opening'),
+        verbColor: c('fg300'),
+        target: (input.project_relative_file_path as string | undefined) ?? '',
+      };
+    case 'tool-present_fs_item_for_download':
+      return {
+        verb: t('chat.tool.downloading'),
+        verbColor: c('fg300'),
+        target: (input.label as string | undefined) ?? (input.path as string | undefined) ?? '',
+      };
     default: {
       // Generic fallback — never truncate (F1.2 regression guard). For an
       // unknown tool "tool-some_new_thing" we render "some new thing" as
@@ -600,5 +635,28 @@ function labelForAttachmentType(
       return 'canvas';
     case 'folder':
       return 'folder';
+  }
+}
+
+/**
+ * Like `labelForAttachmentType` but accepts the open-vocabulary string that
+ * `stripAttachmentBlocks` extracts from `<attachment type="...">` wrappers.
+ * Falls back to the raw type for unknown kinds so we never silently drop
+ * information from a persisted thread.
+ */
+function labelForStrippedType(type: string): string {
+  switch (type) {
+    case 'skill':
+      return 'skill';
+    case 'designSystem':
+      return 'design system';
+    case 'file':
+      return 'file';
+    case 'canvas':
+      return 'canvas';
+    case 'folder':
+      return 'folder';
+    default:
+      return type;
   }
 }
