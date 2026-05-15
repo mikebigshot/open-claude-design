@@ -1,7 +1,8 @@
 // Loop helper barrel — pure functions used by ToolLoopAgent / use-agent-chat.
-// Each helper is self-contained and unit-tested in isolation. The W1 spec
-// (Loop + Protocols) lives in
-// internal/docs/superpowers/specs/2026-05-10-agent-v2-alignment-design.md §2.
+// Each helper is self-contained and unit-tested in isolation. Covers token
+// estimation, async tool result protocol, snipping, and prepare-step hooks
+// that drive the W1 loop semantics (cache-priming reminder injection + todo
+// reminders + snip on overflow).
 
 export {
   estimateMessageTokens,

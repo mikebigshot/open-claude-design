@@ -121,12 +121,11 @@ describe('makePrepareStep (§2.1 snip threshold + §4.2 system-reminder)', () =>
   });
 });
 
-// Aligns with official `pq()` in
-// internal/docs/research/claude-design-v2/evidence/bundle.index-BFU6eZJE.js:
-// the agent loop injects a `<todo_reminder>` into the next user message
-// whenever the chat has outstanding (uncompleted) todos. This is independent
-// of token threshold — the reminder fires every step until the todos are
-// completed or removed.
+// Aligns with the official `pq()` step-prepare function reverse-engineered
+// from the production bundle: the agent loop injects a `<todo_reminder>`
+// into the next user message whenever the chat has outstanding (uncompleted)
+// todos. This is independent of token threshold — the reminder fires every
+// step until the todos are completed or removed.
 describe('makePrepareStep — <todo_reminder> injection (pq alignment)', () => {
   const pending = (id: string, content: string): Todo => ({ id, content, status: 'pending' });
   const completed = (id: string, content: string): Todo => ({

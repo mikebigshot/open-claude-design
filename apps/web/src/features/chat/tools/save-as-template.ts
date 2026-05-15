@@ -21,14 +21,25 @@ export function saveAsTemplateTool(projectId: string) {
           .max(500)
           .optional()
           .describe('Optional one-line summary.'),
+        intro_text: z
+          .string()
+          .max(1000)
+          .optional()
+          .describe(
+            'Composer intro shown when a user starts from this template — tell them what to provide so you can get started.',
+          ),
       })
       .strict(),
-    execute: async ({ name, description }, { abortSignal }) => {
+    execute: async ({ name, description, intro_text }, { abortSignal }) => {
       const url = buildUrl(`/api/projects/${encodeURIComponent(projectId)}/save-as-template`);
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, ...(description ? { description } : {}) }),
+        body: JSON.stringify({
+          name,
+          ...(description ? { description } : {}),
+          ...(intro_text ? { intro_text } : {}),
+        }),
         signal: abortSignal,
       });
       if (!res.ok) {

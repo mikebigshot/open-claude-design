@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS templates (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
+  intro_text TEXT,
   source_project_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

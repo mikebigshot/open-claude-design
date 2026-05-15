@@ -31,10 +31,9 @@
 //   - Input field name is `task` (matches official; old chats persisted with
 //     `instructions:` are just historical records — they don't get re-fired).
 //
-// Placeholder text is verbatim from
-//   `internal/docs/research/claude-design-v2/artifacts/agent-loop/
-//    verifier-tools-and-fork-boundary.raw.js`
-// so the LLM sees exactly what the official agent loop emits.
+// Placeholder text is verbatim from the official agent loop bundle's
+// fork-boundary slice, so the LLM sees exactly what the official agent
+// loop emits.
 
 import { tool } from 'ai';
 import { z } from 'zod';

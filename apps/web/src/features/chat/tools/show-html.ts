@@ -1,14 +1,18 @@
-// show_html — load a file into the AGENT-PRIVATE iframe (Phase 2 / A1).
+// show_html — load a file into the agent's own preview iframe.
 //
-// The agent-private pane is a hidden iframe rendered alongside the user's
-// preview pane. It lets the verifier sub-agent run eval_js / screenshot
-// against an arbitrary file without disturbing what the user is looking at.
+// Routing is by viewportKey (= chatId). Verifier sub-agents have chatId
+// `<main-id>::verifier`; the host renders a per-viewport iframe so the
+// verifier inspects its own copy without touching the user's pane.
 //
-// Dispatches `agent-show-file` CustomEvent with target='agent'; the host
-// shell listens to this and updates the agent-private iframe's src.
+// Main-agent path: nudge the agent to call `done` first (which surfaces a
+// working view to the user and scans for errors). The nudge fires once per
+// chat by setting the same gate `done` uses, so a second show_html proceeds
+// normally even if the agent decides to ignore the suggestion.
 
 import { tool } from 'ai';
 import { z } from 'zod';
+
+import { hasDoneFired, markDone } from '../lib/done-gate.js';
 
 export interface ShowHtmlContext {
   getChatId: () => string;
@@ -16,27 +20,36 @@ export interface ShowHtmlContext {
 
 const EMPTY_PATH = 'Error: `show_html` requires a non-empty file path.';
 
+const ADVISORY_NUDGE =
+  'Before self-inspecting: consider calling `done` first to surface your work-in-progress to the user, then `fork_verifier_agent`. The verifier checks in its own context so yours stays clean, and the user gets to see what you\'ve built so far. (This nudge fires once — call show_html again to proceed anyway.)';
+
 export function showHtmlTool(ctx: ShowHtmlContext) {
   return tool({
     description:
-      'Load an HTML file into YOUR (agent-private) iframe — separate from the user\'s preview pane. Use this before eval_js / screenshot when you need to inspect a file without changing what the user sees. Returns once the load is requested; pair with screenshot or get_webview_logs to confirm the page rendered cleanly.',
+      "Open an HTML file in YOUR preview iframe (not the user's pane). Use this before get_webview_logs to check the page loads cleanly. The user's tab bar is not affected — call show_to_user when you want to surface a file in their view.",
     inputSchema: z
       .object({
         path: z.string().min(1).describe('Path of the HTML file to load.'),
       })
       .strict(),
     execute: async ({ path }) => {
+      const chatId = ctx.getChatId();
+      // Main-agent nudge — fires once per chat. Verifier sub-agents
+      // (chatId contains "::") skip the gate entirely.
+      if (!chatId.includes('::') && !hasDoneFired(chatId)) {
+        markDone(chatId);
+        return ADVISORY_NUDGE;
+      }
       const trimmed = String(path ?? '').trim();
       if (!trimmed) return EMPTY_PATH;
-      const chatId = ctx.getChatId();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('agent-show-file', {
-            detail: { filePath: trimmed, viewportKey: chatId, target: 'agent' },
+            detail: { filePath: trimmed, viewportKey: chatId },
           }),
         );
       }
-      return `Opened ${trimmed} in your iframe (agent-private pane). The user's pane is unchanged.`;
+      return `Opened ${trimmed} in your iframe. Call get_webview_logs to check for rendering errors.`;
     },
   });
 }

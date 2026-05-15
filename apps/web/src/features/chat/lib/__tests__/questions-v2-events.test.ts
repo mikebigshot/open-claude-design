@@ -10,7 +10,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 import { questionsV2Tool } from '../../tools/questions-v2.js';
-import { useQuestionsV2Listener } from '../questions-v2-events.js';
+import {
+  dispatchQuestionsV2Close,
+  dispatchQuestionsV2Stream,
+  useQuestionsV2Listener,
+} from '../questions-v2-events.js';
 
 interface ToolInternals {
   execute: (input: unknown, ctx: { toolCallId: string }) => Promise<unknown>;
@@ -60,7 +64,7 @@ describe('useQuestionsV2Listener', () => {
         }),
       );
     });
-    expect(result.current).toEqual({ spec: SPEC, toolCallId: 'tc-1' });
+    expect(result.current).toEqual({ spec: SPEC, toolCallId: 'tc-1', streaming: false });
   });
 
   it('replaces state when a newer event fires (only one pending at a time)', () => {
@@ -102,6 +106,105 @@ describe('useQuestionsV2Listener', () => {
     const { unmount } = renderHook(() => useQuestionsV2Listener());
     unmount();
     expect(removeSpy).toHaveBeenCalledWith('questions-v2-show', expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith('questions-v2-stream', expect.any(Function));
+    expect(removeSpy).toHaveBeenCalledWith('questions-v2-close', expect.any(Function));
     removeSpy.mockRestore();
+  });
+
+  describe('streaming lifecycle (claude.ai/design Bu8zJzmd parity)', () => {
+    it('-show event sets streaming=false (the final spec arrived)', () => {
+      const { result } = renderHook(() => useQuestionsV2Listener());
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-show', { detail: { spec: SPEC, toolCallId: 't1' } }),
+        );
+      });
+      expect(result.current?.streaming).toBe(false);
+      expect(result.current?.toolCallId).toBe('t1');
+    });
+
+    it('-stream event with done=false sets streaming=true and updates spec', () => {
+      const { result } = renderHook(() => useQuestionsV2Listener());
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-stream', {
+            detail: { spec: SPEC, toolCallId: 't2', done: false },
+          }),
+        );
+      });
+      expect(result.current?.streaming).toBe(true);
+      expect(result.current?.spec).toEqual(SPEC);
+      expect(result.current?.toolCallId).toBe('t2');
+    });
+
+    it('-stream event with done=true flips streaming=false (final partial reached)', () => {
+      const { result } = renderHook(() => useQuestionsV2Listener());
+      // First an in-progress stream tick
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-stream', {
+            detail: { spec: SPEC, toolCallId: 't3', done: false },
+          }),
+        );
+      });
+      expect(result.current?.streaming).toBe(true);
+      // Then the done=true tick
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-stream', {
+            detail: { spec: SPEC, toolCallId: 't3', done: true },
+          }),
+        );
+      });
+      expect(result.current?.streaming).toBe(false);
+      expect(result.current?.spec).toEqual(SPEC);
+    });
+
+    it('-close event clears the pending state (spec=null)', () => {
+      const { result } = renderHook(() => useQuestionsV2Listener());
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('questions-v2-show', { detail: { spec: SPEC, toolCallId: 't4' } }),
+        );
+      });
+      expect(result.current).not.toBeNull();
+      act(() => {
+        window.dispatchEvent(new CustomEvent('questions-v2-close'));
+      });
+      expect(result.current).toBeNull();
+    });
+
+    it('dispatchQuestionsV2Stream(spec, done) fires the -stream CustomEvent', () => {
+      const received: { spec: unknown; toolCallId: string; done: boolean }[] = [];
+      const handler = (e: Event) =>
+        received.push(
+          (e as CustomEvent<{ spec: unknown; toolCallId: string; done: boolean }>).detail,
+        );
+      window.addEventListener('questions-v2-stream', handler as EventListener);
+      try {
+        dispatchQuestionsV2Stream(SPEC, false);
+        dispatchQuestionsV2Stream(SPEC, true, 'tc-99');
+      } finally {
+        window.removeEventListener('questions-v2-stream', handler as EventListener);
+      }
+      expect(received).toEqual([
+        { spec: SPEC, toolCallId: '', done: false },
+        { spec: SPEC, toolCallId: 'tc-99', done: true },
+      ]);
+    });
+
+    it('dispatchQuestionsV2Close() fires the -close CustomEvent (no detail)', () => {
+      let fired = false;
+      const handler = () => {
+        fired = true;
+      };
+      window.addEventListener('questions-v2-close', handler);
+      try {
+        dispatchQuestionsV2Close();
+      } finally {
+        window.removeEventListener('questions-v2-close', handler);
+      }
+      expect(fired).toBe(true);
+    });
   });
 });
