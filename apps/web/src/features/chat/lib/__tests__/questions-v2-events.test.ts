@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
-import { questionsV2Tool } from '../../tools/questions-v2.js';
+import { type QuestionsV2InputT, questionsV2Tool } from '../../tools/questions-v2.js';
 import {
   dispatchQuestionsV2Close,
   dispatchQuestionsV2Stream,
@@ -23,7 +23,7 @@ function asTool(t: unknown): ToolInternals {
   return t as ToolInternals;
 }
 
-const SPEC = {
+const SPEC: QuestionsV2InputT = {
   title: 'Quick questions',
   questions: [{ id: 'q1', kind: 'freeform', title: 'Anything else?' }],
 };
